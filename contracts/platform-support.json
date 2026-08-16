@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "lastVerified": "2026-08-16",
+  "browserRuntime": {
+    "supported": [
+      {
+        "platform": "windows",
+        "arch": "x64",
+        "browserVersion": "148.0.7778.179",
+        "modes": ["headed", "headless", "project-webdriver", "persistent-profile"]
+      }
+    ],
+    "unsupported": [
+      { "platform": "windows", "arch": "arm64", "reason": "No signed browser artifact is published." },
+      { "platform": "linux", "arch": "x64", "reason": "SDK-only validation; browser artifact is not yet a declared target." },
+      { "platform": "linux", "arch": "arm64", "reason": "No signed browser artifact is published." },
+      { "platform": "macos", "arch": "x64", "reason": "SDK-only validation; browser artifact is not yet a declared target." },
+      { "platform": "macos", "arch": "arm64", "reason": "SDK-only validation; browser artifact is not yet a declared target." }
+    ]
+  },
+  "sdk": {
+    "node": {
+      "versions": ["20", "22", "24"],
+      "platforms": ["windows", "linux", "macos"]
+    },
+    "python": {
+      "versions": ["3.10", "3.12", "3.14"],
+      "platforms": ["windows", "linux", "macos"]
+    }
+  },
+  "containers": {
+    "status": "unsupported",
+    "reason": "Docker is not a declared browser-runtime target until a signed Linux artifact and route-integrity suite pass."
+  }
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=SlyBrowser PayNow billing webhook receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=slybrowser
+Group=slybrowser
+EnvironmentFile=/etc/slybrowser/billing.env
+ExecStart=/usr/local/bin/node /opt/slybrowser-billing/current/dist/cli.js billing-serve
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/slybrowser-billing
+WorkingDirectory=/opt/slybrowser-billing/current
+
+[Install]
+WantedBy=multi-user.target

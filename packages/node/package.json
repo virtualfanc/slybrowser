@@ -1,0 +1,55 @@
+{
+  "name": "slybrowser",
+  "version": "0.1.0",
+  "description": "Node.js SDK for SlyBrowser",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "slybrowser": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "playwright-core": ">=1.50.0",
+    "puppeteer-core": ">=24.0.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    },
+    "puppeteer-core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/extract-zip": "2.0.0",
+    "@types/node": "^24.0.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "yaml": "^2.8.0"
+  },
+  "dependencies": {
+    "extract-zip": "2.0.1"
+  }
+}

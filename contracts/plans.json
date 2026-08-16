@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "currency": "USD",
+  "billingPeriod": "month",
+  "plans": [
+    { "id": "free", "name": "Free", "monthlyPriceCents": 0, "concurrency": 1 },
+    { "id": "launch", "name": "Launch", "monthlyPriceCents": 1900, "concurrency": 5 },
+    { "id": "studio", "name": "Studio", "monthlyPriceCents": 4900, "concurrency": 20 },
+    { "id": "fleet", "name": "Fleet", "monthlyPriceCents": 19900, "concurrency": 200 },
+    { "id": "grid", "name": "Grid", "monthlyPriceCents": 49900, "concurrency": 2000 }
+  ]
+}

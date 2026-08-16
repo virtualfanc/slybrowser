@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/schemas/release-manifest.schema.json",
+  "title": "SlyBrowser signed release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "browserVersion", "sdkCompatibility", "artifacts", "evidence", "signature"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "browserVersion": { "type": "string", "minLength": 1 },
+    "sdkCompatibility": { "type": "string", "minLength": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "platform", "arch", "url", "sha256", "size", "archiveFormat",
+          "browserExecutable", "driverExecutable", "browserSha256", "driverSha256"
+        ],
+        "properties": {
+          "platform": { "enum": ["windows", "linux", "macos"] },
+          "arch": { "enum": ["x64", "arm64"] },
+          "url": { "type": "string", "format": "uri" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "size": { "type": "integer", "minimum": 1 },
+          "archiveFormat": { "const": "zip" },
+          "browserExecutable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+          },
+          "driverExecutable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+          },
+          "browserSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "driverSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sbom", "provenance", "chromiumPatchInventory", "sourceBoundary"],
+      "properties": {
+        "sbom": { "$ref": "#/$defs/evidenceArtifact" },
+        "provenance": { "$ref": "#/$defs/evidenceArtifact" },
+        "chromiumPatchInventory": { "$ref": "#/$defs/evidenceArtifact" },
+        "sourceBoundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sdk", "chromiumPatches", "proprietaryCore"],
+          "properties": {
+            "sdk": { "const": "open-source" },
+            "chromiumPatches": { "const": "inventory-and-approved-patches" },
+            "proprietaryCore": { "const": "private" }
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "value"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "keyId": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "evidenceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256", "size", "mediaType"],
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size": { "type": "integer", "minimum": 1 },
+        "mediaType": {
+          "enum": [
+            "application/vnd.cyclonedx+json",
+            "application/vnd.in-toto+json",
+            "application/vnd.slybrowser.chromium-patch-inventory+json"
+          ]
+        }
+      }
+    }
+  }
+}

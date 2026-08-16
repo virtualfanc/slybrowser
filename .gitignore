@@ -1,0 +1,55 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+secrets/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# .NET
+**/bin/
+**/obj/
+TestResults/
+
+# Browser binaries, test evidence, and private Chromium source
+artifacts/
+tests/detection/browsers.local.json
+private/
+vendor/chromium/
+*.exe
+*.dll
+*.pdb
+*.dSYM/
+
+# Temporary release files
+.cache/
+tmp/
+release-staging/
+
+# Local authorization-service state and generated credentials
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.authorization.json

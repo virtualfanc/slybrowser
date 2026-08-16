@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "browsers": [
+    {
+      "id": "stock-playwright",
+      "name": "Stock Playwright",
+      "executable": "${STOCK_CHROME_EXE}",
+      "headless": true,
+      "args": []
+    },
+    {
+      "id": "cloakbrowser",
+      "name": "CloakBrowser",
+      "executable": "${CLOAKBROWSER_BINARY_PATH}",
+      "headless": true,
+      "args": []
+    },
+    {
+      "id": "slybrowser",
+      "name": "SlyBrowser",
+      "executable": "${SLYBROWSER_BINARY_PATH}",
+      "headless": true,
+      "args": [
+        "--sly-license-file=${SLYBROWSER_TEST_LICENSE_FILE}"
+      ]
+    }
+  ]
+}

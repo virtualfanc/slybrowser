@@ -1,0 +1,9 @@
+packages:
+  - packages/node
+  - packages/license-service
+  - website
+
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true

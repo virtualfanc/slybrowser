@@ -1,0 +1,21 @@
+{
+  "name": "@slybrowser/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SlyBrowser SDK and release-tooling workspace",
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright-core": "1.62.1"
+  },
+  "scripts": {
+    "build": "pnpm --filter slybrowser build && pnpm --filter @slybrowser/license-service build",
+    "test": "pnpm --filter slybrowser test && pnpm --filter @slybrowser/license-service test && node --test tests/release/*.test.mjs",
+    "test:detection:unit": "node --test tests/detection/*.test.mjs",
+    "benchmark:strongest": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/browser/Test-SlyVsChromiumStrongest.ps1",
+    "lint": "pnpm --filter slybrowser lint",
+    "typecheck": "pnpm --filter slybrowser typecheck && pnpm --filter @slybrowser/license-service typecheck"
+  }
+}

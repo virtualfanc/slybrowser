@@ -1,0 +1,20 @@
+{
+  "name": "@slybrowser/license-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private SlyBrowser entitlement, lease, concurrency, and release service",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "main": "./dist/index.js",
+  "bin": { "sly-license-service": "./dist/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

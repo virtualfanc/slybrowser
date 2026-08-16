@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">SlyBrowser mark</title>
+  <desc id="desc">A transparent multicolor browser orbit and search lens surrounding an S.</desc>
+  <g fill="none" stroke-linecap="round">
+    <path d="M218 636A356 356 0 0 1 780 260" stroke="#F05A47" stroke-width="96"/>
+    <path d="M688 250A356 356 0 0 1 826 708" stroke="#F6C445" stroke-width="96"/>
+    <path d="M800 794A356 356 0 0 1 228 758" stroke="#39B878" stroke-width="96"/>
+    <circle cx="512" cy="518" r="222" fill="#38D6D9" stroke="#071522" stroke-width="34"/>
+    <path d="M660 365C598 311 465 312 400 371C343 423 383 483 490 507C607 533 665 574 652 646C636 735 508 772 402 718C365 699 333 675 306 648" stroke="#5577FF" stroke-width="98"/>
+    <path d="M766 704L856 794" stroke="#F6C445" stroke-width="96"/>
+  </g>
+</svg>

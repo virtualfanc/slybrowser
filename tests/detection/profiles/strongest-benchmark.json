@@ -1,0 +1,47 @@
+{
+  "profile": {
+    "locale": "zh-CN",
+    "languages": [
+      "zh-CN",
+      "zh"
+    ],
+    "timezone": {
+      "zone": "Asia/Shanghai",
+      "utc": "UTC+08:00",
+      "locale": "zh-CN"
+    },
+    "screen": {
+      "width": 1920,
+      "height": 1080
+    },
+    "webrtc": "proxy",
+    "canvasNoise": {
+      "r": 1,
+      "g": -1,
+      "b": 1,
+      "a": 0
+    },
+    "webglImageNoise": {
+      "r": 1,
+      "g": 1,
+      "b": -1,
+      "a": 0
+    },
+    "audioContext": {
+      "channel": 0.0000001,
+      "analyzer": 0.0000002
+    },
+    "clientRects": {
+      "width": 0.125,
+      "height": -0.125
+    },
+    "hardwareConcurrency": 20,
+    "deviceMemory": 8,
+    "doNotTrack": false,
+    "allowedPorts": [
+      80,
+      443
+    ],
+    "gpuEnabled": true
+  }
+}

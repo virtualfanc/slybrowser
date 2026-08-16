@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/schemas/license-lease.schema.json",
+  "title": "SlyBrowser signed license lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["algorithm", "keyId", "payload", "signature"],
+  "properties": {
+    "algorithm": { "const": "Ed25519" },
+    "keyId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+    "payload": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 43692 },
+    "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 88 }
+  }
+}
