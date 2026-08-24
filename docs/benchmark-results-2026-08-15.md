@@ -12,7 +12,7 @@ Python and Node.js tests pass, the private Chromium build completes, native leas
 verification is integrated before the private profile service, and a repeatable
 40-entry detection harness produces JSON, screenshots, and comparison reports.
 
-It is not production-ready. All 29 inherited VB parameter groups now cross the public
+It is not production-ready. All 29 legacy profile parameter groups now cross the public
 contract and native parser; 13 stable groups are verified end to end. The largest
 remaining blockers are two inherited parser-only fields and
 other product features, license enforcement and service work, incomplete full
@@ -23,7 +23,7 @@ results.
 
 | Item | Evidence | Status |
 | --- | --- | --- |
-| Browser build | `SlyBrowser.exe` 148.0.7778.179, 4,067,328 bytes | PASS |
+| Browser build | Private-preview `SlyBrowser.exe`, 4,067,328 bytes | PASS |
 | Browser SHA-256 | `83ef4f90248ceaf58876ccd17204d34e9b51669b09c90394a4492832b997b5ed` | Recorded |
 | Native core DLL | `chrome.dll`, 281,036,800 bytes, SHA-256 `72ec740cdc1b728c09d3a4ac71ce58a89b2245508deaaea9baff9053a92db061` | Recorded |
 | Browser product branding | Product, description, internal name, original filename, executable, UI strings, installer identity, and icon are SlyBrowser | PASS |
@@ -46,10 +46,10 @@ because it contains machine fingerprint and network data.
 ## Detection benchmark result
 
 The run used the same Windows host, network, test definitions, and time window, but not
-the same browser major. Stock Chrome was 153 while SlyBrowser was 148, so the score is a
-development comparison rather than a controlled parity claim.
+the same browser major. The score is therefore a development comparison rather than a
+controlled parity claim.
 
-| Metric | SlyBrowser 148 | Stock Playwright / Chrome 153 |
+| Metric | SlyBrowser private preview | Stock Playwright / Chrome |
 | --- | ---: | ---: |
 | Coverage-adjusted score | 75.73 | 72.11 |
 | Raw score among completed graded checks | 83.99 | 72.11 |
@@ -95,7 +95,7 @@ browser majors differ, this cannot establish either TLS parity or a SlyBrowser d
 ### Project WebDriver validation
 
 The open-source W3C runner was previously validated against the matching project
-browser and `chromedriver.exe`, both reporting `148.0.7778.179`. That live evidence
+browser and `chromedriver.exe`, both reporting the same private release version. That live evidence
 predates the final SlyBrowser branding rebuild; rerun the live benchmark before using
 its recorded binary hashes as release evidence.
 
@@ -116,13 +116,13 @@ These are coverage losses, not invented bot-detection failures.
 ### Full WebDriver-to-WebDriver comparison
 
 A later sequential run used the same 40 definitions through each product's own bundled
-WebDriver. SlyBrowser 148 used project defaults. The installed keyless CloakBrowser 146
-used all binary fingerprint behavior available to that build: seed 42424, Windows
+WebDriver. SlyBrowser used project defaults. The installed keyless CloakBrowser Free build
+used all binary fingerprint behavior available to that build: seed 42424, a Windows
 persona, GPU allowance, locale/timezone binary flags, and its wrapper's two documented
-switch exclusions. No Cloak entitlement was configured, so current 150/Pro-only
+switch exclusions. No Cloak entitlement was configured, so current Pro-only
 features were not present.
 
-| Metric | SlyBrowser 148 | CloakBrowser 146 |
+| Metric | SlyBrowser private preview | CloakBrowser Free build |
 | --- | ---: | ---: |
 | Coverage-adjusted score | 87.22 | 66.73 |
 | Raw completed score | 87.22 | 74.01 |
@@ -171,9 +171,9 @@ service checks require an endpoint owned by or explicitly authorized for the tes
 The local CloakBrowser repository exposes an MIT SDK around a proprietary browser
 binary. Its public README claims 71 source-level patches and the detection values cited
 in the project brief. The checkout does not distribute that binary, but a locally
-cached CloakBrowser Free 146 build was available for an additional 12-entry run.
-Against the identical saved definitions, SlyBrowser 148 through its project WebDriver
-scored 79.34 and CloakBrowser Free 146 scored 78.85, both at 100% coverage. The +0.49
+cached CloakBrowser Free build was available for an additional 12-entry run.
+Against the identical saved definitions, SlyBrowser through its project WebDriver
+scored 79.34 and the CloakBrowser Free build scored 78.85, both at 100% coverage. The +0.49
 SlyBrowser difference came from Incolumitas (97.2 versus 94.4); both scored 100 on the
 local core probe and BrowserScan, 85.7 on Device & Browser Info, and 0 on the
 Fingerprint scraping demo. Because browser majors and automation transports differ,
@@ -186,7 +186,7 @@ with the separate 40-entry score above.
 | Node launch API | Playwright and Puppeteer | Project WebDriver is the default; Playwright and Puppeteer remain explicit adapters | Core present |
 | .NET client | Community client and CLI | Source and tests, not compiled locally | Validation |
 | Native signal patches | Publicly claims 71 patch groups | Existing private build passes core probe | Inventory/parity unproven |
-| Profile configuration | Proxy, locale, timezone, viewport, GeoIP, WebRTC, storage and more | All 29 VB groups mapped; 13 stable groups E2E verified | `media` and `mac` remain inherited parser-only fields; component-specific E2E remains |
+| Profile configuration | Proxy, locale, timezone, viewport, GeoIP, WebRTC, storage and more | All 29 legacy profile groups mapped; 13 stable groups E2E verified | `media` and `mac` remain inherited parser-only fields; component-specific E2E remains |
 | Human interaction layer | Mouse curves, typing, scroll, actionability | WebDriver trusted curved pointer/click and per-character typing implemented; framework adapters also support Humanize | Broader actionability and scrolling parity remains |
 | Persistent profiles/extensions | Implemented | Persistent launch exists; extension workflow absent | Medium |
 | Binary delivery | Auto-download, cache, update, signed checksums | Signed manifest/artifact verification only | Large |
@@ -223,11 +223,11 @@ Production blockers remain:
 ### P0 — make the current product internally coherent
 
 1. Harden native profile runtime coverage. `--sly-config-file` now securely consumes
-   and maps all 29 inherited VB groups, including encoded proxy credentials/bypass and
+   and maps all 29 legacy profile groups, including encoded proxy credentials/bypass and
    a browser-process geolocation override; add runtime consumers for inherited
    parser-only `media`/`mac` only if a real product requirement exists, and extend
    component-specific E2E coverage. Device scale and complete WebRTC shutdown are not
-   inherited VB capabilities and are intentionally rejected.
+   legacy profile capabilities and are intentionally rejected.
 2. Keep release packaging and smoke tests aligned with the verified
    `SlyBrowser.exe` product resources and embedded SlyBrowser icon.
 3. Worker language inheritance is fixed in the targeted E2E run; fix the remaining

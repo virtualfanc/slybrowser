@@ -24,12 +24,22 @@ class LicenseClaims:
     issued_at: int
     not_before: int
     expires_at: int
+    browser_version: str | None
     browser_min: str
     browser_max: str
     features: tuple[str, ...]
     session_id: str
     nonce: str
     device_hash: str | None = None
+    plan_id: str | None = None
+    concurrency_limit: int | None = None
+    paid_through: int | None = None
+    license_status: str | None = None
+    artifact_sha256: str | None = None
+    browser_sha256: str | None = None
+    driver_sha256: str | None = None
+    artifact: Mapping[str, Any] | None = None
+    lease_generation: int | None = None
 
 
 def _fail(code: str, message: str) -> LicenseError:
@@ -60,6 +70,101 @@ def _required_int(document: Mapping[str, Any], name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise _fail("license_invalid_claims", f"Claim {name} is invalid")
     return value
+
+
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+def _artifact_claim(document: Mapping[str, Any], schema_version: int) -> dict[str, Any] | None:
+    value = document.get("artifact")
+    if value is None:
+        if schema_version == 2:
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        return None
+    if not isinstance(value, Mapping):
+        raise _fail("license_invalid_claims", "Claim artifact is invalid")
+    platform = _required_string(value, "platform")
+    arch = _required_string(value, "arch")
+    archive_format = _required_string(value, "archiveFormat")
+    modules = value.get("privateModules")
+    resources = value.get("resources")
+    if (
+        platform not in {"windows", "linux", "macos"}
+        or arch not in {"x64", "arm64"}
+        or archive_format != "zip"
+        or not isinstance(modules, list)
+        or not isinstance(resources, list)
+    ):
+        raise _fail("license_invalid_claims", "Claim artifact is invalid")
+
+    def module_claim(item: Any) -> dict[str, Any]:
+        if not isinstance(item, Mapping):
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        sha256 = _required_string(item, "sha256")
+        size = _required_int(item, "size")
+        if not _is_sha256(sha256) or size < 0:
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        return {
+            "path": _required_string(item, "path"),
+            "sha256": sha256,
+            "size": size,
+            "abi": _required_string(item, "abi"),
+        }
+
+    def resource_claim(item: Any) -> dict[str, Any]:
+        if not isinstance(item, Mapping):
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        sha256 = _required_string(item, "sha256")
+        size = _required_int(item, "size")
+        if not _is_sha256(sha256) or size < 0:
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        return {
+            "path": _required_string(item, "path"),
+            "sha256": sha256,
+            "size": size,
+        }
+
+    code_signature = None
+    if "codeSignature" in value:
+        signature = value.get("codeSignature")
+        if not isinstance(signature, Mapping):
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        scheme = _required_string(signature, "scheme")
+        certificate_sha256 = _required_string(signature, "certificateSha256")
+        timestamp_required = signature.get("timestampRequired")
+        if (
+            scheme not in {"authenticode", "apple-developer-id", "x509-code-signing"}
+            or not _is_sha256(certificate_sha256)
+            or not isinstance(timestamp_required, bool)
+        ):
+            raise _fail("license_invalid_claims", "Claim artifact is invalid")
+        code_signature = {
+            "scheme": scheme,
+            "subject": _required_string(signature, "subject"),
+            "certificateSha256": certificate_sha256,
+            "timestampRequired": timestamp_required,
+        }
+    sha256 = _required_string(value, "sha256")
+    browser_sha256 = _required_string(value, "browserSha256")
+    driver_sha256 = _required_string(value, "driverSha256")
+    if not _is_sha256(sha256) or not _is_sha256(browser_sha256) or not _is_sha256(driver_sha256):
+        raise _fail("license_invalid_claims", "Claim artifact is invalid")
+    result = {
+        "sha256": sha256,
+        "platform": platform,
+        "arch": arch,
+        "archiveFormat": archive_format,
+        "browserExecutable": _required_string(value, "browserExecutable"),
+        "driverExecutable": _required_string(value, "driverExecutable"),
+        "browserSha256": browser_sha256,
+        "driverSha256": driver_sha256,
+        "privateModules": tuple(module_claim(item) for item in modules),
+        "resources": tuple(resource_claim(item) for item in resources),
+    }
+    if code_signature is not None:
+        result["codeSignature"] = code_signature
+    return result
 
 
 class LicenseVerifier:
@@ -162,7 +267,7 @@ class LicenseVerifier:
         device_hash: str | None,
     ) -> LicenseClaims:
         schema_version = _required_int(document, "schemaVersion")
-        if schema_version != 1:
+        if schema_version not in {1, 2}:
             raise _fail("license_schema_unsupported", "License schema is not supported")
 
         claim_audience = _required_string(document, "audience")
@@ -185,9 +290,42 @@ class LicenseVerifier:
 
         browser_min = _required_string(document, "browserMin")
         browser_max = _required_string(document, "browserMax")
+        claim_browser_version = _required_string(document, "browserVersion") if "browserVersion" in document else None
+        if schema_version == 2 and claim_browser_version != browser_version:
+            raise _fail("license_browser_unsupported", "Browser version is outside the license range")
         current_version = _parse_version(browser_version)
         if not (_parse_version(browser_min) <= current_version <= _parse_version(browser_max)):
             raise _fail("license_browser_unsupported", "Browser version is outside the license range")
+
+        plan_id = _required_string(document, "planId") if document.get("planId") is not None else None
+        concurrency_limit = _required_int(document, "concurrencyLimit") if "concurrencyLimit" in document else None
+        if concurrency_limit is not None and concurrency_limit < 1:
+            raise _fail("license_invalid_claims", "Claim concurrencyLimit is invalid")
+        paid_through = None if document.get("paidThrough") is None else _required_int(document, "paidThrough")
+        if paid_through is not None and paid_through < 0:
+            raise _fail("license_invalid_claims", "Claim paidThrough is invalid")
+        license_status = _required_string(document, "licenseStatus") if "licenseStatus" in document else None
+        if license_status is not None and license_status not in {"active", "hold", "revoked"}:
+            raise _fail("license_invalid_claims", "Claim licenseStatus is invalid")
+        artifact_sha256 = _required_string(document, "artifactSha256") if "artifactSha256" in document else None
+        if artifact_sha256 is not None and not _is_sha256(artifact_sha256):
+            raise _fail("license_invalid_claims", "Claim artifactSha256 is invalid")
+        browser_sha256 = _required_string(document, "browserSha256") if "browserSha256" in document else None
+        if browser_sha256 is not None and not _is_sha256(browser_sha256):
+            raise _fail("license_invalid_claims", "Claim browserSha256 is invalid")
+        driver_sha256 = _required_string(document, "driverSha256") if "driverSha256" in document else None
+        if driver_sha256 is not None and not _is_sha256(driver_sha256):
+            raise _fail("license_invalid_claims", "Claim driverSha256 is invalid")
+        lease_generation = _required_int(document, "leaseGeneration") if "leaseGeneration" in document else None
+        if lease_generation is not None and lease_generation < 1:
+            raise _fail("license_invalid_claims", "Claim leaseGeneration is invalid")
+        artifact = _artifact_claim(document, schema_version)
+        if artifact is not None and (
+            artifact["sha256"] != artifact_sha256
+            or artifact["browserSha256"] != browser_sha256
+            or artifact["driverSha256"] != driver_sha256
+        ):
+            raise _fail("license_invalid_claims", "Claim artifact does not match flat hashes")
 
         features_value = document.get("features")
         if (
@@ -216,10 +354,20 @@ class LicenseVerifier:
             issued_at=issued_at,
             not_before=not_before,
             expires_at=expires_at,
+            browser_version=claim_browser_version,
             browser_min=browser_min,
             browser_max=browser_max,
+            plan_id=plan_id,
+            concurrency_limit=concurrency_limit,
             features=tuple(features_value),
             session_id=_required_string(document, "sessionId"),
             nonce=_required_string(document, "nonce"),
             device_hash=claim_device_hash,
+            paid_through=paid_through,
+            license_status=license_status,
+            artifact_sha256=artifact_sha256,
+            browser_sha256=browser_sha256,
+            driver_sha256=driver_sha256,
+            artifact=artifact,
+            lease_generation=lease_generation,
         )

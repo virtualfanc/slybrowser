@@ -1,8 +1,8 @@
 # Native WebDriver Humanize and runtime pairing
 
-SlyBrowser's default Python and JavaScript automation path uses the project-built W3C
-WebDriver. Humanized pointer and keyboard behavior runs inside that driver rather than
-being synthesized by the default SDK clients.
+SlyBrowser's default JavaScript, Python, Java and .NET automation path uses the
+project-built W3C WebDriver. Humanized pointer and keyboard behavior runs inside that
+driver rather than being synthesized by the default SDK clients.
 
 ## W3C capability
 
@@ -33,9 +33,12 @@ rewritten, so callers retain exact low-level control. Playwright and Puppeteer d
 use WebDriver and therefore retain their framework adapter implementation.
 
 The runtime regression covers Page, Frame and Element behavior at 100%, 125%, 150%
-and 200% device scale, Node and Python SDK calls, covered-element recovery and a
-three-second command boundary. `getClientRects()` and `getBoundingClientRect()` must
-remain in the same CSS coordinate space at every scale; any mismatch blocks release.
+and 200% device scale, Node.js, Python, Java and .NET SDK calls, covered-element
+recovery and a three-second command boundary. `getClientRects()` and
+`getBoundingClientRect()` must remain in the same CSS coordinate space at every scale;
+any mismatch blocks release. Node.js is the score baseline for the SDK parity gate;
+the other SDKs must meet or exceed it before refreshed public runtime scores are
+published.
 
 ## Why copying `chromedriver` alone does not work in production
 
@@ -60,23 +63,23 @@ They remain testable locally, but they are not distributable commercial artifact
 
 ## Production build order
 
-The hash must cover the exact browser file that will be packaged. Authenticode signing
-changes a PE file, so use this order on Windows:
+The hash must cover the exact browser file that will be packaged. If optional
+Authenticode signing is used, sign before generating WebDriver pairing hashes:
 
 1. Build `SlyBrowser.exe` with production license enforcement and the production
    public verification key.
-2. Authenticode-sign `SlyBrowser.exe`, then verify its signature.
-3. Generate the pairing GN arguments from the signed browser:
+2. Optionally Authenticode-sign `SlyBrowser.exe`, then verify its signature metadata.
+3. Generate the pairing GN arguments from the exact browser binary:
 
    ```powershell
    .\scripts\release\Get-WebDriverPairingArgs.ps1 `
-     -BrowserExecutable 'F:\chrome\src\out\release_x64\SlyBrowser.exe'
+     -BrowserExecutable 'E:\multilogin\chrome\src\out\release_x64\SlyBrowser.exe'
    ```
 
 4. Put the three emitted values into the sanitized production GN configuration and
    rebuild `chromedriver` from the same Chromium checkout.
-5. Authenticode-sign `chromedriver.exe`, verify both signatures, and package the exact
-   signed browser file hashed in step 3 beside the signed driver.
+5. Optionally Authenticode-sign `chromedriver.exe`, verify metadata if present, and
+   package the exact browser file hashed in step 3 beside the matched driver.
 6. On a clean machine, confirm a valid package launches and that copied, renamed,
    modified, mismatched, expired-lease, and missing-lease cases all fail closed.
 

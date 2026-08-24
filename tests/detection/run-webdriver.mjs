@@ -17,7 +17,7 @@ import {
   parseRecaptcha,
 } from "./webdriver-adapters.mjs";
 import { summarizeResults } from "./score.mjs";
-import { startNodeSdkDriver } from "./node-sdk-client.mjs";
+import { startAuthorizedNodeSdkDriver, startNodeSdkDriver } from "./node-sdk-client.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const localPages = resolve(scriptDirectory, "pages");
@@ -35,6 +35,13 @@ function parseArguments(arguments_) {
     browser: null,
     driver: null,
     driverLicenseFile: null,
+    authorizationFile: null,
+    authorizedCacheRoot: null,
+    profileConfig: null,
+    leaseKeyId: null,
+    leasePublicKeyHex: null,
+    releaseKeyId: null,
+    releasePublicKeyBase64Url: null,
     browserArgs: [],
     excludeSwitches: [],
     browserId: "slybrowser-webdriver",
@@ -55,6 +62,13 @@ function parseArguments(arguments_) {
     if (argument === "--browser") options.browser = resolve(arguments_[++index]);
     else if (argument === "--driver") options.driver = resolve(arguments_[++index]);
     else if (argument === "--driver-license-file") options.driverLicenseFile = resolve(arguments_[++index]);
+    else if (argument === "--authorization-file") options.authorizationFile = resolve(arguments_[++index]);
+    else if (argument === "--authorized-cache-root") options.authorizedCacheRoot = resolve(arguments_[++index]);
+    else if (argument === "--profile-config") options.profileConfig = resolve(arguments_[++index]);
+    else if (argument === "--lease-key-id") options.leaseKeyId = arguments_[++index];
+    else if (argument === "--lease-public-key-hex") options.leasePublicKeyHex = arguments_[++index];
+    else if (argument === "--release-key-id") options.releaseKeyId = arguments_[++index];
+    else if (argument === "--release-public-key-base64url") options.releasePublicKeyBase64Url = arguments_[++index];
     else if (argument === "--browser-arg") options.browserArgs.push(arguments_[++index]);
     else if (argument === "--exclude-switch") options.excludeSwitches.push(arguments_[++index]);
     else if (argument === "--browser-id") options.browserId = arguments_[++index];
@@ -73,6 +87,11 @@ function parseArguments(arguments_) {
   }
   if (!options.browser) throw new Error("--browser is required");
   if (!options.driver) throw new Error("--driver is required");
+  if (options.authorizationFile) {
+    for (const name of ["leaseKeyId", "leasePublicKeyHex", "releaseKeyId", "releasePublicKeyBase64Url"]) {
+      if (!options[name]) throw new Error(`--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required with --authorization-file`);
+    }
+  }
   if (!/^[a-z0-9-]+$/.test(options.browserId)) throw new Error("--browser-id must use lowercase letters, numbers, and hyphens");
   if (!Number.isFinite(options.navigationTimeout) || options.navigationTimeout < 1_000) {
     throw new Error("--navigation-timeout must be at least 1000 milliseconds");
@@ -80,6 +99,18 @@ function parseArguments(arguments_) {
   if (!["default", "careful"].includes(options.humanPreset)) throw new Error("--human-preset must be default or careful");
   if (!Number.isInteger(options.humanSeed) || options.humanSeed < 0) throw new Error("--human-seed must be a non-negative integer");
   return options;
+}
+
+function authorizedTrust(options) {
+  return {
+    trustedServiceUrls: ["https://api.slybrowser.com"],
+    licenseTrustedKeys: {
+      [options.leaseKeyId]: Buffer.from(options.leasePublicKeyHex, "hex"),
+    },
+    releaseTrustedKeys: {
+      [options.releaseKeyId]: Buffer.from(options.releasePublicKeyBase64Url, "base64url"),
+    },
+  };
 }
 
 async function sha256File(path) {
@@ -551,12 +582,24 @@ async function main() {
   validateSites(siteConfiguration);
   const sites = options.only ? siteConfiguration.sites.filter((site) => options.only.has(site.id)) : siteConfiguration.sites;
   if (!sites.length) throw new Error("No detection sites were selected");
+  const profileConfig = options.profileConfig
+    ? JSON.parse(await readFile(options.profileConfig, "utf8"))
+    : null;
+  const profile = profileConfig?.profile && typeof profileConfig.profile === "object"
+    ? profileConfig.profile
+    : profileConfig;
   await mkdir(options.output, { recursive: true });
   const localServer = await startLocalServer();
-  const driverServer = await startNodeSdkDriver(options.driver, {
-    licenseFile: options.driverLicenseFile,
-    commandTimeout: options.navigationTimeout + 15_000,
-  });
+  const driverServer = options.authorizationFile
+    ? await startAuthorizedNodeSdkDriver(options.authorizationFile, {
+      trust: authorizedTrust(options),
+      cacheRoot: options.authorizedCacheRoot,
+      commandTimeout: options.navigationTimeout + 15_000,
+    })
+    : await startNodeSdkDriver(options.driver, {
+      licenseFile: options.driverLicenseFile,
+      commandTimeout: options.navigationTimeout + 15_000,
+    });
   let client;
   const startedAt = new Date().toISOString();
   try {
@@ -564,6 +607,7 @@ async function main() {
     client = await driverServer.createSession(options.browser, {
       headless: !options.headed,
       viewport: { width: 1920, height: 947 },
+      profile,
       args: launchArgs,
       excludeSwitches: options.excludeSwitches,
       captureBrowserLogs: options.captureBrowserLogs,
@@ -628,6 +672,7 @@ async function main() {
           input: options.humanize ? "native Sly WebDriver trusted element click and per-character key input; explicit Actions remain caller-controlled" : "deterministic baseline",
         },
         browserLogs: options.captureBrowserLogs ? "enabled by request" : "disabled to avoid changing DevTools command traffic",
+        authorizationMode: options.authorizationFile ? "production runtime handoff via authorized SDK" : "signed lease file handoff",
       },
       results,
       summary: summarizeResults(results, sites),

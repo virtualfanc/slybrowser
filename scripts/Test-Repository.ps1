@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [switch]$RequireDotNet
+    [switch]$RequireDotNet,
+    [switch]$RequireMaven,
+    [switch]$RepositoryGuardOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,9 +28,9 @@ function Invoke-Checked {
     }
 }
 
-Push-Location $repoRoot
-try {
+function Test-RepositoryGuard {
     Invoke-Checked -FilePath 'git' -Arguments @('diff', '--check')
+
     $secretMatches = & rg -n 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AIza[0-9A-Za-z_-]{20,}' . -g '!**/.git/**' -g '!node_modules/**'
     if ($LASTEXITCODE -eq 0) {
         throw "Potential secret material found:`n$secretMatches"
@@ -36,6 +38,46 @@ try {
     if ($LASTEXITCODE -ne 1) {
         throw 'Secret scan failed.'
     }
+
+    $trackedFiles = & git ls-files
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to list tracked repository files.' }
+    $forbidden = @()
+    $rules = @(
+        @{ Pattern = '(^|/)(AGENTS(\.override)?|CLAUDE)\.md$'; Reason = 'local AI-agent instruction file' },
+        @{ Pattern = '(^|/)(\.codex|\.claude|\.cursor|\.continue|\.aider|\.windsurf|\.agent|\.agents|\.ai)(/|$)'; Reason = 'local AI-agent state directory' },
+        @{ Pattern = '(^|/)(dist|coverage|TestResults|node_modules|target|bin|obj)(/|$)'; Reason = 'generated build/test dependency output' },
+        @{ Pattern = '(^|/)memory/(hot-cache|open-loops)\.md$'; Reason = 'local AI-agent memory cache' },
+        @{ Pattern = '(^|/)secrets(/|$)|\.(key|pem|pfx|sqlite|sqlite-shm|sqlite-wal)$|\.authorization\.json$'; Reason = 'secret, database, or local authorization material' },
+        @{ Pattern = 'codex-clipboard|ai-scratch|agent-scratch|codex-scratch|ai-transcript|agent-transcript|codex-transcript|\.ai\.tmp$|\.agent\.tmp$|\.codex\.tmp$'; Reason = 'AI-agent temporary artifact' },
+        @{ Pattern = '\.(exe|dll|pdb|dSYM|zip|7z|rar|tar|tgz|gz)$'; Reason = 'binary, symbol, or release archive artifact' }
+    )
+    foreach ($file in $trackedFiles) {
+        $normalized = $file -replace '\\', '/'
+        foreach ($rule in $rules) {
+            if ($normalized -match $rule.Pattern) {
+                $forbidden += "$normalized`t$($rule.Reason)"
+                break
+            }
+        }
+    }
+    if ($forbidden.Count -gt 0) {
+        throw "Forbidden tracked repository artifacts found:`n$($forbidden -join "`n")"
+    }
+}
+
+Push-Location $repoRoot
+try {
+    Test-RepositoryGuard
+    if ($RepositoryGuardOnly) { return }
+
+    Invoke-Checked -FilePath 'powershell' -Arguments @(
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        (Join-Path $repoRoot 'scripts\release\Set-SdkPackageVersion.ps1'),
+        '-Check'
+    )
 
     $pythonPackage = Join-Path $repoRoot 'packages\python'
     $previousPythonPath = $env:PYTHONPATH
@@ -79,6 +121,20 @@ try {
         throw '.NET SDK is required but no SDK is installed.'
     } else {
         Write-Warning '.NET SDK is not installed; .NET tests were skipped.'
+    }
+
+    $maven = Get-Command mvn -ErrorAction SilentlyContinue
+    if ($maven) {
+        $mavenPath = if ($maven.Source) { $maven.Source } elseif ($maven.FullName) { $maven.FullName } else { $maven.Path }
+        Invoke-Checked -FilePath $mavenPath -Arguments @(
+            '-f',
+            'packages/java/pom.xml',
+            'test'
+        )
+    } elseif ($RequireMaven) {
+        throw 'Maven is required but was not found.'
+    } else {
+        Write-Warning 'Maven is not installed; Java tests were skipped.'
     }
 } finally {
     Pop-Location

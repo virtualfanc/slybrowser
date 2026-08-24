@@ -14,6 +14,34 @@ function required(name) {
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
+function normalizedPath(path) {
+  const absolute = resolve(path);
+  return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
+function assertReleaseSigningKeySeparated(keyPath, keyId) {
+  const conflicts = [];
+  for (const [name, label] of [
+    ["SLY_LICENSE_SIGNING_KEY_FILE", "online lease signing key"],
+    ["SLY_LICENSE_FILE_SIGNING_KEY_FILE", "license-file signing key"],
+  ]) {
+    const value = process.env[name];
+    if (value && normalizedPath(value) === normalizedPath(keyPath)) {
+      conflicts.push(label);
+    }
+  }
+  for (const [name, label] of [
+    ["SLY_LICENSE_KEY_ID", "online lease key ID"],
+    ["SLY_LICENSE_FILE_SIGNING_KEY_ID", "license-file key ID"],
+  ]) {
+    const value = process.env[name];
+    if (value && value === keyId) {
+      conflicts.push(label);
+    }
+  }
+  if (conflicts.length > 0) {
+    throw new Error(`Release manifest signing key must be separate from ${conflicts.join(", ")}`);
+  }
+}
 
 function normalize(value) {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
@@ -30,6 +58,7 @@ const output = resolve(required("--output"));
 const keyPath = resolve(required("--private-key"));
 const keyId = required("--key-id");
 if (!/^[A-Za-z0-9._-]{1,64}$/.test(keyId)) throw new Error("--key-id is invalid");
+assertReleaseSigningKeySeparated(keyPath, keyId);
 const document = JSON.parse((await readFile(input, "utf8")).replace(/^\uFEFF/, ""));
 if (!document || typeof document !== "object" || Array.isArray(document) || document.signature !== undefined) {
   throw new Error("Input must be one unsigned release manifest object");

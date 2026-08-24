@@ -3,10 +3,50 @@
   "currency": "USD",
   "billingPeriod": "month",
   "plans": [
-    { "id": "free", "name": "Free", "monthlyPriceCents": 0, "concurrency": 1 },
-    { "id": "launch", "name": "Launch", "monthlyPriceCents": 1900, "concurrency": 5 },
-    { "id": "studio", "name": "Studio", "monthlyPriceCents": 4900, "concurrency": 20 },
-    { "id": "fleet", "name": "Fleet", "monthlyPriceCents": 19900, "concurrency": 200 },
-    { "id": "grid", "name": "Grid", "monthlyPriceCents": 49900, "concurrency": 2000 }
+    {
+      "id": "free",
+      "sku": "free",
+      "name": "Free",
+      "monthlyPriceCents": 0,
+      "autoRenew": false,
+      "concurrency": 1,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize"]
+    },
+    {
+      "id": "launch",
+      "sku": "launch",
+      "name": "Launch",
+      "monthlyPriceCents": 1900,
+      "autoRenew": true,
+      "concurrency": 5,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "studio",
+      "sku": "studio",
+      "name": "Studio",
+      "monthlyPriceCents": 4900,
+      "autoRenew": true,
+      "concurrency": 20,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "fleet",
+      "sku": "fleet",
+      "name": "Fleet",
+      "monthlyPriceCents": 19900,
+      "autoRenew": true,
+      "concurrency": 200,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "grid",
+      "sku": "grid",
+      "name": "Grid",
+      "monthlyPriceCents": 49900,
+      "autoRenew": true,
+      "concurrency": 2000,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    }
   ]
 }

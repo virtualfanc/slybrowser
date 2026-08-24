@@ -1,0 +1,14 @@
+[Unit]
+Description=Run SlyBrowser PayNow billing reconciliation every 30-60 minutes
+Documentation=file:/opt/slybrowser-billing/current/packages/license-service/README.md
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+RandomizedDelaySec=30min
+AccuracySec=1min
+Persistent=true
+Unit=slybrowser-billing-reconcile.service
+
+[Install]
+WantedBy=timers.target

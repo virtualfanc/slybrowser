@@ -96,8 +96,8 @@ async function main() {
     languages: ["fr-FR", "fr"],
     timezone: "Europe/Paris",
     screen: { width: 1600, height: 900 },
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-    userAgentFullVersion: "148.0.7778.179",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    userAgentFullVersion: "123.0.4567.89",
     hardwareConcurrency: 12,
     deviceMemory: 8,
     webgl: {
@@ -119,8 +119,8 @@ async function main() {
       userAgent: expected.userAgent,
       userAgentFullVersion: expected.userAgentFullVersion,
       clientHints: [
-        { brand: "Chromium", version: "148" },
-        { brand: "Google Chrome", version: "148" },
+        { brand: "Chromium", version: "123" },
+        { brand: "Google Chrome", version: "123" },
         { brand: "Not_A Brand", version: "99" },
       ],
       osVersion: "10.0.0",

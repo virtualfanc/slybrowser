@@ -1,4 +1,8 @@
-# SlyBrowser Binary License — working draft
+# SlyBrowser Binary License — archived working draft
+
+The launch-ready binary distribution terms are now maintained in
+[`BINARY-LICENSE.md`](BINARY-LICENSE.md). Keep this draft only as historical planning
+context for future legal review.
 
 > **DRAFT — NOT EFFECTIVE AND NOT FOR DISTRIBUTION.** This document is a product and
 > engineering checklist, not approved legal terms. It must be reviewed and completed

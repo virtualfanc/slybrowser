@@ -28,6 +28,24 @@ def is_sdk_compatible(value: str, version: str) -> bool:
     if not tokens:
         raise ManifestError("Manifest SDK compatibility is invalid", code="manifest_invalid")
     for token in tokens:
+        if token.startswith("^"):
+            target = _numeric_version(token[1:])
+            major = target[0] if len(target) > 0 else 0
+            minor = target[1] if len(target) > 1 else 0
+            patch = target[2] if len(target) > 2 else 0
+            if major > 0:
+                upper = (major + 1, 0, 0)
+            elif minor > 0:
+                upper = (0, minor + 1, 0)
+            else:
+                upper = (0, 0, patch + 1)
+            length = max(len(current), len(target), len(upper))
+            left = current + (0,) * (length - len(current))
+            lower = target + (0,) * (length - len(target))
+            right = upper + (0,) * (length - len(upper))
+            if not (left >= lower and left < right):
+                return False
+            continue
         match = re.fullmatch(r"(>=|<=|>|<|=)?(\d+(?:\.\d+){0,7})", token)
         if not match:
             raise ManifestError("Manifest SDK compatibility is invalid", code="manifest_invalid")
@@ -50,6 +68,29 @@ def is_sdk_compatible(value: str, version: str) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
+class ReleasePrivateModule:
+    path: str
+    sha256: str
+    size: int
+    abi: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseResourceFile:
+    path: str
+    sha256: str
+    size: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseCodeSignature:
+    scheme: str
+    subject: str
+    certificateSha256: str
+    timestampRequired: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ReleaseArtifact:
     platform: str
     arch: str
@@ -61,14 +102,18 @@ class ReleaseArtifact:
     driverExecutable: str
     browserSha256: str
     driverSha256: str
+    privateModules: tuple[ReleasePrivateModule, ...]
+    resources: tuple[ReleaseResourceFile, ...]
+    codeSignature: ReleaseCodeSignature | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ReleaseManifest:
     browser_version: str
     sdk_compatibility: str
+    status: str
     artifacts: tuple[ReleaseArtifact, ...]
-    evidence: Mapping[str, Any]
+    evidence: Mapping[str, Any] | None
     signing_key_id: str
     raw: Mapping[str, Any]
 
@@ -128,13 +173,16 @@ def verify_release_manifest(
         raise ManifestError("Manifest browser version is invalid", code="manifest_invalid")
     if not isinstance(sdk_compatibility, str) or not sdk_compatibility:
         raise ManifestError("Manifest SDK compatibility is invalid", code="manifest_invalid")
+    status = document.get("status")
+    if status not in {"available", "revoked"}:
+        raise ManifestError("Manifest release status is invalid", code="manifest_invalid")
     if not isinstance(artifacts_document, list) or not artifacts_document:
         raise ManifestError("Manifest artifacts are invalid", code="manifest_invalid")
     artifacts = tuple(_parse_artifact(item) for item in artifacts_document)
     if len({(item.platform, item.arch) for item in artifacts}) != len(artifacts):
         raise ManifestError("Manifest has duplicate platform artifacts", code="manifest_duplicate_artifact")
-    evidence = _parse_evidence(document.get("evidence"))
-    return ReleaseManifest(browser_version, sdk_compatibility, artifacts, evidence, key_id, document)
+    evidence = None if "evidence" not in document else _parse_evidence(document.get("evidence"))
+    return ReleaseManifest(browser_version, sdk_compatibility, status, artifacts, evidence, key_id, document)
 
 
 def _parse_evidence_artifact(value: object, media_type: str) -> dict[str, Any]:
@@ -212,8 +260,10 @@ def _parse_artifact(value: Any) -> ReleaseArtifact:
     required = {
         "platform", "arch", "url", "sha256", "size", "archiveFormat",
         "browserExecutable", "driverExecutable", "browserSha256", "driverSha256",
+        "privateModules", "resources",
     }
-    if set(value) != required:
+    allowed = required | {"codeSignature"}
+    if not required.issubset(set(value)) or not set(value).issubset(allowed):
         raise ManifestError("Artifact fields are invalid", code="manifest_invalid")
     if value["platform"] not in {"windows", "linux", "macos"}:
         raise ManifestError("Artifact platform is invalid", code="manifest_invalid")
@@ -237,7 +287,24 @@ def _parse_artifact(value: Any) -> ReleaseArtifact:
     for name in ("browserSha256", "driverSha256"):
         if not isinstance(value[name], str) or len(value[name]) != 64 or any(character not in "0123456789abcdef" for character in value[name]):
             raise ManifestError("Artifact runtime hash is invalid", code="manifest_invalid")
-    return ReleaseArtifact(**value)
+    private_modules = _parse_private_modules(value["privateModules"])
+    resources = _parse_resources(value["resources"])
+    code_signature = _parse_code_signature(value["codeSignature"]) if "codeSignature" in value else None
+    return ReleaseArtifact(
+        value["platform"],
+        value["arch"],
+        value["url"],
+        value["sha256"],
+        value["size"],
+        value["archiveFormat"],
+        value["browserExecutable"],
+        value["driverExecutable"],
+        value["browserSha256"],
+        value["driverSha256"],
+        private_modules,
+        resources,
+        code_signature,
+    )
 
 
 def _safe_relative_path(value: object) -> bool:
@@ -245,3 +312,68 @@ def _safe_relative_path(value: object) -> bool:
         return False
     normalized = value.replace("\\", "/")
     return not normalized.startswith("/") and not (len(normalized) >= 2 and normalized[1] == ":") and ".." not in normalized.split("/")
+
+
+def _hex64(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and not any(character not in "0123456789abcdef" for character in value)
+
+
+def _parse_private_modules(value: object) -> tuple[ReleasePrivateModule, ...]:
+    if not isinstance(value, list) or not value:
+        raise ManifestError("Artifact private module metadata is invalid", code="manifest_invalid")
+    modules: list[ReleasePrivateModule] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"path", "sha256", "size", "abi"}:
+            raise ManifestError("Artifact private module metadata is invalid", code="manifest_invalid")
+        if (
+            not _safe_relative_path(item["path"])
+            or not _hex64(item["sha256"])
+            or not isinstance(item["size"], int)
+            or isinstance(item["size"], bool)
+            or item["size"] <= 0
+            or not isinstance(item["abi"], str)
+            or not item["abi"]
+            or len(item["abi"]) > 128
+        ):
+            raise ManifestError("Artifact private module metadata is invalid", code="manifest_invalid")
+        modules.append(ReleasePrivateModule(item["path"], item["sha256"], item["size"], item["abi"]))
+    return tuple(modules)
+
+
+def _parse_resources(value: object) -> tuple[ReleaseResourceFile, ...]:
+    if not isinstance(value, list) or not value:
+        raise ManifestError("Artifact resource metadata is invalid", code="manifest_invalid")
+    resources: list[ReleaseResourceFile] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"path", "sha256", "size"}:
+            raise ManifestError("Artifact resource metadata is invalid", code="manifest_invalid")
+        if (
+            not _safe_relative_path(item["path"])
+            or not _hex64(item["sha256"])
+            or not isinstance(item["size"], int)
+            or isinstance(item["size"], bool)
+            or item["size"] <= 0
+        ):
+            raise ManifestError("Artifact resource metadata is invalid", code="manifest_invalid")
+        resources.append(ReleaseResourceFile(item["path"], item["sha256"], item["size"]))
+    return tuple(resources)
+
+
+def _parse_code_signature(value: object) -> ReleaseCodeSignature:
+    if not isinstance(value, dict) or set(value) != {"scheme", "subject", "certificateSha256", "timestampRequired"}:
+        raise ManifestError("Artifact code signature metadata is invalid", code="manifest_invalid")
+    if (
+        value["scheme"] not in {"authenticode", "apple-developer-id", "x509-code-signing"}
+        or not isinstance(value["subject"], str)
+        or not value["subject"]
+        or len(value["subject"]) > 512
+        or not _hex64(value["certificateSha256"])
+        or not isinstance(value["timestampRequired"], bool)
+    ):
+        raise ManifestError("Artifact code signature metadata is invalid", code="manifest_invalid")
+    return ReleaseCodeSignature(
+        value["scheme"],
+        value["subject"],
+        value["certificateSha256"],
+        value["timestampRequired"],
+    )

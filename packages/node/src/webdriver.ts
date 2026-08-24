@@ -38,10 +38,16 @@ export interface WebDriverLaunchSettings {
   humanPreset?: HumanPreset;
   humanConfig?: Partial<HumanConfig>;
   humanSeed?: number;
+  runtimeHandoff?: Record<string, unknown>;
+  driverRuntimeHandoff?: Record<string, unknown>;
+  nativeReady?: boolean;
+  nativeReadyTimeout?: number;
   tempRoot?: string;
+  releaseRoot?: string;
   driverStartTimeout?: number;
   commandTimeout?: number;
   mobilePersona?: MobilePersona;
+  allowRuntimeActivationTicket?: boolean;
 }
 
 export interface WebDriverVersions {
@@ -96,6 +102,65 @@ export function defaultDriverExecutable(browserExecutable: string, explicit?: st
   const configured = explicit ?? process.env.SLYBROWSER_WEBDRIVER_PATH;
   if (configured) return resolve(configured);
   return join(dirname(resolve(browserExecutable)), process.platform === "win32" ? "chromedriver.exe" : "chromedriver");
+}
+
+function jsonObject(value: unknown): JsonObject | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
+}
+
+function parseSignedLeaseClaims(lease: string | Buffer | Record<string, unknown>): JsonObject | undefined {
+  let envelope: unknown = lease;
+  try {
+    if (Buffer.isBuffer(lease)) envelope = JSON.parse(lease.toString("utf8")) as unknown;
+    else if (typeof lease === "string") envelope = JSON.parse(lease) as unknown;
+  } catch {
+    return undefined;
+  }
+  const payload = jsonObject(envelope)?.payload;
+  if (typeof payload !== "string" || !payload) return undefined;
+  try {
+    return jsonObject(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown);
+  } catch {
+    return undefined;
+  }
+}
+
+export function deriveReleaseRoot(
+  browserExecutable: string,
+  artifactBrowserExecutable: unknown,
+): string | undefined {
+  if (typeof artifactBrowserExecutable !== "string" || !artifactBrowserExecutable.trim()) {
+    return undefined;
+  }
+  const expectedParts = artifactBrowserExecutable
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean);
+  if (expectedParts.length === 0) return undefined;
+  const actualPath = resolve(browserExecutable);
+  const actualParts = actualPath.replaceAll("\\", "/").split("/").filter(Boolean);
+  if (actualParts.length < expectedParts.length) return undefined;
+  const actualSuffix = actualParts.slice(-expectedParts.length);
+  const matches = expectedParts.every((part, index) => {
+    const actualPart = actualSuffix[index];
+    return typeof actualPart === "string" &&
+      part.toLowerCase() === actualPart.toLowerCase();
+  });
+  if (!matches) return undefined;
+  let releaseRoot = actualPath;
+  for (let index = 0; index < expectedParts.length; ++index) {
+    releaseRoot = dirname(releaseRoot);
+  }
+  return releaseRoot;
+}
+
+function releaseRootFromLease(
+  browserExecutable: string,
+  lease: string | Buffer | Record<string, unknown>,
+): string | undefined {
+  const claims = parseSignedLeaseClaims(lease);
+  const artifact = jsonObject(claims?.artifact);
+  return deriveReleaseRoot(browserExecutable, artifact?.browserExecutable);
 }
 
 export function buildWebDriverSessionPayload(
@@ -479,7 +544,7 @@ export class SlyWebDriverService {
     private readonly stderr: string[],
   ) {}
 
-  static async start(executable: string, options: { startTimeout?: number; commandTimeout?: number; licenseFile?: string } = {}): Promise<SlyWebDriverService> {
+  static async start(executable: string, options: { startTimeout?: number; commandTimeout?: number; licenseFile?: string; runtimeFile?: string; releaseRoot?: string } = {}): Promise<SlyWebDriverService> {
     const path = resolve(executable);
     if (!await fileExists(path)) throw new ConfigurationError("Project WebDriver executable does not exist", "webdriver_missing");
     const port = await freePort();
@@ -489,6 +554,8 @@ export class SlyWebDriverService {
       `--port=${port}`,
       "--log-level=WARNING",
       ...(options.licenseFile === undefined ? [] : [`--sly-license-file=${resolve(options.licenseFile)}`]),
+      ...(options.releaseRoot === undefined ? [] : [`--sly-release-root=${resolve(options.releaseRoot)}`]),
+      ...(options.runtimeFile === undefined ? [] : [`--sly-runtime-file=${resolve(options.runtimeFile)}`]),
     ], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     process.stdout?.on("data", (chunk) => { if (stdout.length < 200) stdout.push(String(chunk).slice(0, 4000)); });
     process.stderr?.on("data", (chunk) => { if (stderr.length < 200) stderr.push(String(chunk).slice(0, 4000)); });
@@ -533,7 +600,10 @@ export class SlyWebDriverService {
 
   async close(): Promise<void> {
     if (this.process.exitCode !== null) return;
-    this.process.kill();
+    await fetch(`${this.origin}/shutdown`, {
+      method: "GET",
+      signal: AbortSignal.timeout(1000),
+    }).catch(() => undefined);
     await new Promise<void>((accept) => {
       if (this.process.exitCode !== null) accept();
       else {
@@ -541,6 +611,7 @@ export class SlyWebDriverService {
         this.process.once("exit", () => { clearTimeout(timer); accept(); });
       }
     });
+    if (this.process.exitCode === null) this.process.kill();
   }
 }
 
@@ -556,11 +627,25 @@ export async function launch(
   if (settings.commandTimeout !== undefined && settings.commandTimeout < 1000) {
     throw new ConfigurationError("commandTimeout must be at least 1000 milliseconds", "config_invalid");
   }
+  if (settings.nativeReady === true &&
+      settings.nativeReadyTimeout !== undefined &&
+      (!Number.isFinite(settings.nativeReadyTimeout) || settings.nativeReadyTimeout < 1)) {
+    throw new ConfigurationError("nativeReadyTimeout must be a positive number of milliseconds", "config_invalid");
+  }
   const browserExecutable = resolve(executable);
   const driverExecutable = defaultDriverExecutable(browserExecutable, settings.driverExecutable);
+  const releaseRoot = settings.releaseRoot === undefined
+    ? releaseRootFromLease(browserExecutable, lease)
+    : resolve(settings.releaseRoot);
   const plan = await prepareLaunch(browserExecutable, nativeProfileForSettings(settings), lease, {
     tempRoot: settings.tempRoot,
+    releaseRoot,
     includeDriverLease: true,
+    runtimeHandoff: settings.runtimeHandoff,
+    driverRuntimeHandoff: settings.driverRuntimeHandoff,
+    includeDriverRuntime: settings.runtimeHandoff !== undefined,
+    allowRuntimeActivationTicket: settings.allowRuntimeActivationTicket === true,
+    nativeReady: settings.nativeReady === true,
   });
   let service: SlyWebDriverService | undefined;
   try {
@@ -568,10 +653,18 @@ export async function launch(
       ...(settings.driverStartTimeout === undefined ? {} : { startTimeout: settings.driverStartTimeout }),
       ...(settings.commandTimeout === undefined ? {} : { commandTimeout: settings.commandTimeout }),
       ...(plan.driverLicenseFile === undefined ? {} : { licenseFile: plan.driverLicenseFile }),
+      ...(releaseRoot === undefined ? {} : { releaseRoot }),
+      ...(plan.driverRuntimeFile === undefined ? {} : { runtimeFile: plan.driverRuntimeFile }),
     });
     const session = await service.createSession(browserExecutable, settings, plan.arguments);
-    await session.setTimeouts({ pageLoad: settings.commandTimeout ?? 60_000, script: settings.commandTimeout ?? 60_000, implicit: 0 });
-    return session;
+    try {
+      if (settings.nativeReady === true) await plan.waitForNativeReady(settings.nativeReadyTimeout ?? 15_000);
+      await session.setTimeouts({ pageLoad: settings.commandTimeout ?? 60_000, script: settings.commandTimeout ?? 60_000, implicit: 0 });
+      return session;
+    } catch (error) {
+      await session.close().catch(() => undefined);
+      throw error;
+    }
   } catch (error) {
     await service?.close();
     throw error;

@@ -1,4 +1,5 @@
 export * from "./errors.js";
+export * from "./automation.js";
 export * from "./browser.js";
 export * from "./launcher.js";
 export * from "./license.js";

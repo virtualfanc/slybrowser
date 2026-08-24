@@ -1,8 +1,17 @@
 import { useEffect } from "react";
+import { AdminOrders } from "./AdminOrders";
+import { BillingOrder } from "./BillingOrder";
+import { BillingResult } from "./BillingResult";
+import { CookieConsent } from "./components/CookieConsent";
 import { Header } from "./components/Header";
-import { BrowserProduct, Capabilities, Closing, Consistency, Hero, Pricing, Quickstart, TestEvidence, Trust } from "./sections";
+import { BrowserProduct, Capabilities, Closing, Consistency, Feedback, Hero, LegalPolicies, Pricing, Quickstart, TestEvidence, Trust } from "./sections";
 
 export default function App() {
+  const billingResult = window.location.pathname === "/billing/result";
+  const billingOrder = window.location.pathname === "/billing/order";
+  const adminOrders = window.location.pathname === "/admin/orders";
+  const legalPolicies = window.location.pathname === "/legal";
+
   useEffect(() => {
     const items = document.querySelectorAll<HTMLElement>(".reveal");
     const observer = new IntersectionObserver((entries) => {
@@ -19,19 +28,35 @@ export default function App() {
   }, []);
 
   return (
-    <div id="top">
-      <Header />
-      <main>
-        <Hero />
-        <Quickstart />
-        <BrowserProduct />
-        <Capabilities />
-        <TestEvidence />
-        <Consistency />
-        <Pricing />
-        <Trust />
-        <Closing />
-      </main>
-    </div>
+    <>
+      <div id="top">
+        <Header />
+        <main>
+          {adminOrders ? (
+            <AdminOrders />
+          ) : legalPolicies ? (
+            <LegalPolicies />
+          ) : billingOrder ? (
+            <BillingOrder />
+          ) : billingResult ? (
+            <BillingResult />
+          ) : (
+            <>
+              <Hero />
+              <Quickstart />
+              <BrowserProduct />
+              <Capabilities />
+              <TestEvidence />
+              <Consistency />
+              <Pricing />
+              <Feedback />
+              <Trust />
+              <Closing />
+            </>
+          )}
+        </main>
+      </div>
+      <CookieConsent />
+    </>
   );
 }

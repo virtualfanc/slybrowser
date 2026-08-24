@@ -72,7 +72,7 @@ test("legacy runner errors lose their invented numeric score", () => {
 
 test("comparison warns when browser majors differ", () => {
   const base = {
-    browser: { id: "stock-playwright", name: "Stock", browserVersion: "148.0.0.0" },
+    browser: { id: "stock-playwright", name: "Stock", browserVersion: "123.0.0.0" },
     summary: { score: 10, rawScore: 10, coverage: 100, qualification: "qualified" },
     results: [],
   };
@@ -81,12 +81,33 @@ test("comparison warns when browser majors differ", () => {
     summary: { score: 90, rawScore: 90, coverage: 100, qualification: "qualified" },
     results: [],
   };
-  assert.equal(compareRuns([base, other]).warnings.length, 1);
+  const comparison = compareRuns([base, other]);
+  assert.equal(comparison.scoreComparisonsAllowed, false);
+  assert.equal(comparison.scoreDeltas, null);
+  assert.equal(comparison.warnings.length, 2);
+  assert.match(renderMarkdown(comparison), /Adjusted score \(evidence only; not comparable\)/);
+});
+
+test("comparison retains same-major deltas for controlled baselines", () => {
+  const base = {
+    browser: { id: "stock-playwright", name: "Stock", browserVersion: "149.0.0.0" },
+    summary: { score: 10, rawScore: 20, coverage: 100, qualification: "qualified" },
+    results: [],
+  };
+  const other = {
+    browser: { id: "slybrowser", name: "Sly", browserVersion: "149.1.0.0" },
+    summary: { score: 90, rawScore: 95, coverage: 100, qualification: "qualified" },
+    results: [],
+  };
+  const comparison = compareRuns([base, other]);
+  assert.equal(comparison.scoreComparisonsAllowed, true);
+  assert.deepEqual(comparison.scoreDeltas.slybrowser, { adjusted: 80, raw: 75 });
+  assert.equal(comparison.warnings.length, 0);
 });
 
 test("comparison does not display a numeric score for runner errors", () => {
   const run = {
-    browser: { id: "stock-playwright", name: "Stock", browserVersion: "148.0.0.0" },
+    browser: { id: "stock-playwright", name: "Stock", browserVersion: "123.0.0.0" },
     summary: { score: 0, rawScore: 0, coverage: 0, qualification: "provisional" },
     results: [{ siteId: "unreachable", status: "ERROR", score: 0 }],
   };

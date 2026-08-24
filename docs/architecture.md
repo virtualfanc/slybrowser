@@ -11,7 +11,7 @@ flowchart LR
     R --> A["Browser artifact storage"]
     S --> D["Project-built W3C WebDriver (default)"]
     D --> B["SlyBrowser Chromium binary"]
-    S -. "explicit adapter" .-> F["Playwright / Puppeteer"]
+    S -. "explicit adapter" .-> F["Playwright (4 SDKs) / Puppeteer (Node)"]
     F --> B
     S --> P["Profile directory"]
     B --> C["Native profile configuration"]
@@ -24,15 +24,20 @@ The repository owns configuration contracts, SDK behavior, artifact verification
 launch orchestration, tests, examples, and documentation. It never contains production
 signing secrets or the private Chromium checkout.
 
-JavaScript and Python use the project-built W3C WebDriver as their default transport.
-The SDK resolves only an explicitly configured driver or the `chromedriver` shipped
-beside the selected browser, launches it on a private loopback port, and verifies that
-its reported major version matches the browser. It never delegates driver selection
-to Selenium Manager or another downloader. Playwright and Puppeteer are retained as
-explicit adapters for callers that intentionally choose those transports. In production,
+JavaScript, Python, Java and .NET use the project-built W3C WebDriver as their
+default transport. The SDK resolves only an explicitly configured driver or the
+`chromedriver` shipped beside the selected browser, launches it on a private loopback
+port, and verifies that its reported major version matches the browser. It never
+delegates driver selection to Selenium Manager, a `PATH` driver or another downloader.
+Playwright is available through explicit Node.js/TypeScript, Python, Java and .NET
+adapters; Puppeteer is available through its official JavaScript/TypeScript runtime
+only. Each adapter pins the authorized SlyBrowser executable and rejects a framework
+browser path or unsupported binding version. In production,
 the driver also verifies its own lease and accepts only the exact sibling browser name
 and build-time SHA-256. Native Humanize behavior is negotiated through `sly:options`
 and executed inside the driver for standard W3C element click and send-keys commands.
+Playwright and Puppeteer must not claim native Humanize until a shared browser-side
+control plane is implemented and advertised.
 
 ## Browser source
 

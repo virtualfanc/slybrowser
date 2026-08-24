@@ -9,9 +9,10 @@ native browser binary exists for the same operating system.
 | --- | --- | --- |
 | Windows x64 | Private-preview supported | Clean local build, native profile handoff, project WebDriver, persistent/ephemeral profile, proxy fail-closed and stock-browser API parity tests |
 | Windows arm64 | Unsupported | No signed browser/WebDriver artifact is published |
-| Linux x64/arm64 | Unsupported browser target | SDK contract tests run on Linux; no native browser/WebDriver artifact is published |
-| macOS x64/arm64 | Unsupported browser target | SDK contract tests run on macOS; no native browser/WebDriver artifact is published |
-| Docker image | Unsupported | No first-party container image or container smoke qualification is published |
+| Linux x64 | Launch target | Requires signed Linux x64 browser/WebDriver artifact, clean-machine smoke, route-integrity and Docker qualification before public download |
+| Linux arm64 | Unsupported | No signed browser/WebDriver artifact is declared for launch |
+| macOS x64/arm64 | Launch target | Requires signed macOS artifacts, Gatekeeper/quarantine handling, profile smoke and framework adapter qualification before public download |
+| Docker image | Launch target | Backed by the signed Linux x64 artifact and blocked until container DNS/proxy/WebRTC route-integrity smoke passes |
 
 The release service selects only an artifact that exactly matches the requested
 platform and architecture. A missing tuple fails with
@@ -24,11 +25,23 @@ architecture, browser version, system Chrome installation or driver from `PATH`.
 | --- | --- | --- |
 | Node.js | 20, 22 and 24 on Windows, Ubuntu and macOS | CI contract support |
 | Python | 3.10, 3.12 and 3.14 on Windows, Ubuntu and macOS | CI contract support |
-| .NET | Source and unit-test project present | Not yet support-qualified because a local/CI SDK run is still required |
+| Java | 11, 17 and 21 on Windows, Ubuntu and macOS | Local Java 11 tests pass; signed browser score matrix is parameterized and skipped without a lease |
+| .NET | 8, 9 and 10 SDKs on Windows, Ubuntu and macOS | Local .NET 8 tests pass; signed browser score matrix is parameterized and gated by lease |
+
+Playwright is declared for all four SDKs. Puppeteer is declared only for
+Node.js/TypeScript because the upstream project is a JavaScript API. The exact
+framework binding lines are maintained in
+[`contracts/automation-backends.json`](../contracts/automation-backends.json).
+Java and .NET use pinned Selenium W3C client bindings for the default project
+WebDriver API, but they start only the caller-supplied project driver and never invoke
+Selenium Manager, a driver from `PATH`, or a downloaded fallback.
 
 The cross-platform jobs validate contracts, manifests, license handling, release
-selection, WebDriver payloads and pure SDK behavior. Browser-dependent acceptance is
-run only on the declared Windows x64 browser target.
+selection, WebDriver payloads and pure SDK behavior. Browser-dependent acceptance must
+run on each declared launch target before that target appears in the public release
+catalog. The Native Humanize SDK score gate treats Node.js as the baseline and requires
+Python, Java and .NET to meet or exceed that score before refreshed public runtime
+results are published.
 
 ## Adding a platform
 

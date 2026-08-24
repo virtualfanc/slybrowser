@@ -1,18 +1,41 @@
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { launchPlaywright, launchPlaywrightPersistent, launchPuppeteer } from "../src/browser.js";
+import {
+  launchPlaywright,
+  launchPlaywrightPersistent,
+  launchPuppeteer,
+  launchPuppeteerPersistent,
+} from "../src/browser.js";
 import { humanizePage, resolveHumanConfig } from "../src/humanize.js";
 
 const directories: string[] = [];
 
-async function assertHandoff(options: Record<string, unknown>): Promise<void> {
+async function assertHandoff(options: Record<string, unknown>, expectedFiles = 2): Promise<string[]> {
   const arguments_ = options.args as string[];
   const paths = arguments_.filter((item) => item.startsWith("--sly-")).map((item) => item.split("=", 2)[1]!);
-  expect(paths).toHaveLength(2);
+  expect(paths).toHaveLength(expectedFiles);
   await Promise.all(paths.map((path) => expect(access(path)).resolves.toBeUndefined()));
+  return arguments_;
+}
+
+async function writeNativeReady(options: Record<string, unknown>): Promise<void> {
+  const arguments_ = options.args as string[];
+  const requestArgument = arguments_.find((item) => item.startsWith("--sly-native-ready-request-file="));
+  expect(requestArgument).toBeDefined();
+  const requestPath = requestArgument!.split("=", 2)[1]!;
+  const request = JSON.parse(await readFile(requestPath, "utf8")) as {
+    readyFile: string;
+    nonce: string;
+  };
+  await writeFile(request.readyFile, JSON.stringify({
+    schemaVersion: 1,
+    kind: "slybrowser.native-ready",
+    ready: true,
+    nonce: request.nonce,
+  }));
 }
 
 afterEach(async () => {
@@ -42,6 +65,7 @@ describe("framework adapters", () => {
     };
     await expect(launchPlaywright(playwright, executable, { lease: "secret" }, {
       tempRoot: directory,
+      frameworkVersion: "1.62.1",
       launchOptions: { headless: true, args: ["--no-first-run"] },
     })).resolves.toEqual({ kind: "browser" });
     expect((lastOptions!.args as string[]).at(-1)).toBe("--no-first-run");
@@ -50,7 +74,7 @@ describe("framework adapters", () => {
       join(directory, "profile"),
       executable,
       { lease: "secret" },
-      { tempRoot: directory },
+      { tempRoot: directory, frameworkVersion: "1.62.1" },
     )).resolves.toEqual({ kind: "context" });
   });
 
@@ -65,8 +89,138 @@ describe("framework adapters", () => {
         return { kind: "puppeteer" };
       },
     };
-    await expect(launchPuppeteer(puppeteer, executable, { lease: "secret" }, { tempRoot: directory }))
+    await expect(launchPuppeteer(puppeteer, executable, { lease: "secret" }, {
+      tempRoot: directory,
+      frameworkVersion: "25.8.0",
+    }))
       .resolves.toEqual({ kind: "puppeteer" });
+    await expect(launchPuppeteerPersistent(
+      puppeteer,
+      join(directory, "profile"),
+      executable,
+      { lease: "secret" },
+      { tempRoot: directory, frameworkVersion: "25.8.0" },
+    )).resolves.toEqual({ kind: "puppeteer" });
+  });
+
+  it("passes runtime handoff files through framework launches", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sly-browser-test-"));
+    directories.push(directory);
+    const executable = join(directory, "browser.exe");
+    await writeFile(executable, "test");
+    let lastArguments: string[] = [];
+    const playwright = {
+      chromium: {
+        async launch(options: Record<string, unknown>) {
+          lastArguments = await assertHandoff(options, 3);
+          return { kind: "browser" };
+        },
+        async launchPersistentContext() { return { kind: "context" }; },
+      },
+    };
+    await expect(launchPlaywright(playwright, executable, { lease: "secret" }, {
+      tempRoot: directory,
+      frameworkVersion: "1.62.1",
+      runtimeHandoff: {
+        schemaVersion: 2,
+        serviceUrl: "https://api.slybrowser.com",
+        state: "reserved",
+        startupId: "st_abcdefghijklmnop",
+        sessionId: "session-test",
+        bootstrapToken: "bootstrap_token_abcdefghijklmnopqrstuvwxyz",
+        heartbeatAfterSeconds: 300,
+        expiresAt: 2000000300,
+        browserVersion: "150.0.0.0",
+        plan: "launch",
+        concurrencyLimit: 5,
+        activeSessions: 1,
+        automationBackend: "playwright",
+      },
+    })).resolves.toEqual({ kind: "browser" });
+    expect(lastArguments.some((argument) => argument.startsWith("--sly-runtime-file="))).toBe(true);
+  });
+
+  it("rejects unsupported framework versions and writes native Humanize control files", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sly-browser-test-"));
+    directories.push(directory);
+    const executable = join(directory, "browser.exe");
+    await writeFile(executable, "test");
+    let lastArguments: string[] = [];
+    const playwright = {
+      chromium: {
+        async launch(options: Record<string, unknown>) {
+          lastArguments = await assertHandoff(options, 3);
+          return {};
+        },
+        async launchPersistentContext() { return {}; },
+      },
+    };
+    await expect(launchPlaywright(playwright, executable, { lease: "secret" }, {
+      tempRoot: directory,
+      frameworkVersion: "1.61.0",
+    })).rejects.toMatchObject({ code: "framework_version_unsupported" });
+    await expect(launchPlaywright(playwright, executable, { lease: "secret" }, {
+      tempRoot: directory,
+      frameworkVersion: "1.62.1",
+      humanize: true,
+      humanPreset: "careful",
+      humanSeed: 42424,
+    })).resolves.toEqual({});
+    expect(lastArguments.some((argument) => argument.startsWith("--sly-humanize-config="))).toBe(true);
+  });
+
+  it("waits for native-ready before returning framework browser objects", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sly-browser-test-"));
+    directories.push(directory);
+    const executable = join(directory, "browser.exe");
+    await writeFile(executable, "test");
+    const events: string[] = [];
+    const playwright = {
+      chromium: {
+        async launch(options: Record<string, unknown>) {
+          await assertHandoff(options, 3);
+          events.push("launch-returned");
+          setTimeout(() => {
+            void writeNativeReady(options).then(() => events.push("native-ready"));
+          }, 25);
+          return { kind: "browser" };
+        },
+        async launchPersistentContext() { return { kind: "context" }; },
+      },
+    };
+    await expect(launchPlaywright(playwright, executable, { lease: "secret" }, {
+      tempRoot: directory,
+      frameworkVersion: "1.62.1",
+      nativeReady: true,
+      nativeReadyTimeout: 1000,
+    })).resolves.toEqual({ kind: "browser" });
+    events.push("adapter-returned");
+    expect(events).toEqual(["launch-returned", "native-ready", "adapter-returned"]);
+    expect((await readdir(directory)).filter((name) => name.startsWith("sly-"))).toEqual([]);
+  });
+
+  it("closes framework browser objects when native-ready times out", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sly-browser-test-"));
+    directories.push(directory);
+    const executable = join(directory, "browser.exe");
+    await writeFile(executable, "test");
+    let closed = false;
+    const puppeteer = {
+      async launch(options: Record<string, unknown>) {
+        await assertHandoff(options, 3);
+        return {
+          kind: "puppeteer",
+          async close() { closed = true; },
+        };
+      },
+    };
+    await expect(launchPuppeteer(puppeteer, executable, { lease: "secret" }, {
+      tempRoot: directory,
+      frameworkVersion: "25.8.0",
+      nativeReady: true,
+      nativeReadyTimeout: 20,
+    })).rejects.toMatchObject({ code: "native_ready_timeout" });
+    expect(closed).toBe(true);
   });
 });
 

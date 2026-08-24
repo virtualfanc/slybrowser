@@ -8,13 +8,18 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "playwright-core": "1.62.1"
+    "playwright-core": "1.62.1",
+    "puppeteer-core": "25.8.0"
   },
   "scripts": {
     "build": "pnpm --filter slybrowser build && pnpm --filter @slybrowser/license-service build",
     "test": "pnpm --filter slybrowser test && pnpm --filter @slybrowser/license-service test && node --test tests/release/*.test.mjs",
     "test:detection:unit": "node --test tests/detection/*.test.mjs",
+    "sdk:version:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/Set-SdkPackageVersion.ps1 -Check",
+    "sdk:pack": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/Publish-SdkPackages.ps1 -Package all -DryRun",
+    "sdk:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/Publish-SdkPackages.ps1 -Package all -Publish",
     "benchmark:strongest": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/browser/Test-SlyVsChromiumStrongest.ps1",
+    "benchmark:kernel-update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/browser/Test-KernelUpdateScoreGate.ps1",
     "lint": "pnpm --filter slybrowser lint",
     "typecheck": "pnpm --filter slybrowser typecheck && pnpm --filter @slybrowser/license-service typecheck"
   }

@@ -1,8 +1,13 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
 
-import { SlyWebDriverService } from "../../packages/node/dist/index.js";
+import { SlyWebDriverService, launchAuthorized } from "../../packages/node/dist/index.js";
+
+const execFileAsync = promisify(execFile);
 
 function parseArguments(values) {
   const options = {};
@@ -11,11 +16,23 @@ function parseArguments(values) {
     if (value === "--browser") options.browser = resolve(values[++index]);
     else if (value === "--driver") options.driver = resolve(values[++index]);
     else if (value === "--output") options.output = resolve(values[++index]);
+    else if (value === "--license") options.license = resolve(values[++index]);
+    else if (value === "--authorization-file") options.authorizationFile = resolve(values[++index]);
+    else if (value === "--cache-root") options.cacheRoot = resolve(values[++index]);
+    else if (value === "--license-key-id") options.licenseKeyId = values[++index];
+    else if (value === "--license-public-key-hex") options.licensePublicKeyHex = values[++index];
+    else if (value === "--release-key-id") options.releaseKeyId = values[++index];
+    else if (value === "--release-public-key-base64url") options.releasePublicKeyBase64url = values[++index];
     else if (value === "--headed") options.headed = true;
     else throw new Error(`Unknown argument: ${value}`);
   }
-  if (!options.browser || !options.driver || !options.output) {
-    throw new Error("--browser, --driver and --output are required");
+  if (!options.output) throw new Error("--output is required");
+  if (options.authorizationFile) {
+    for (const name of ["cacheRoot", "licenseKeyId", "licensePublicKeyHex", "releaseKeyId", "releasePublicKeyBase64url"]) {
+      if (!options[name]) throw new Error(`--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required with --authorization-file`);
+    }
+  } else if (!options.browser || !options.driver || !options.license) {
+    throw new Error("--browser, --driver, --output and --license are required unless --authorization-file is used");
   }
   return options;
 }
@@ -27,17 +44,45 @@ function dataUrl(markup) {
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   const started = performance.now();
-  const service = await SlyWebDriverService.start(options.driver, { commandTimeout: 3_000 });
+  const handoffRoot = await mkdtemp(join(tmpdir(), "sly-node-humanize-"));
+  let service;
   let session;
   try {
-    session = await service.createSession(options.browser, {
-      headless: !options.headed,
-      viewport: { width: 800, height: 600 },
-      args: ["--force-device-scale-factor=1.25"],
-      humanize: true,
-      humanPreset: "careful",
-      humanSeed: 42424,
-    });
+    if (options.authorizationFile) {
+      session = await launchAuthorized(options.authorizationFile, {
+        trust: {
+          licenseTrustedKeys: { [options.licenseKeyId]: Buffer.from(options.licensePublicKeyHex, "hex") },
+          releaseTrustedKeys: { [options.releaseKeyId]: Buffer.from(options.releasePublicKeyBase64url, "base64url") },
+        },
+        install: { cacheRoot: options.cacheRoot },
+        platform: "windows",
+        arch: "x64",
+        updateKernel: false,
+        headless: !options.headed,
+        viewport: { width: 800, height: 600 },
+        args: ["--force-device-scale-factor=1.25"],
+        humanize: true,
+        humanPreset: "careful",
+        humanSeed: 42424,
+        nativeReady: true,
+      });
+    } else {
+      const lease = await readFile(options.license);
+      if (lease.length < 1 || lease.length > 65_536) throw new Error("Signed test lease must contain between 1 and 65536 bytes");
+      const browserLicense = join(handoffRoot, "browser-license.json");
+      const driverLicense = join(handoffRoot, "driver-license.json");
+      await Promise.all([writeFile(browserLicense, lease, { mode: 0o600 }), writeFile(driverLicense, lease, { mode: 0o600 })]);
+      await Promise.all([protectWindowsHandoffFile(browserLicense), protectWindowsHandoffFile(driverLicense)]);
+      service = await SlyWebDriverService.start(options.driver, { commandTimeout: 3_000, licenseFile: driverLicense });
+      session = await service.createSession(options.browser, {
+        headless: !options.headed,
+        viewport: { width: 800, height: 600 },
+        args: [`--sly-license-file=${browserLicense}`, "--force-device-scale-factor=1.25"],
+        humanize: true,
+        humanPreset: "careful",
+        humanSeed: 42424,
+      });
+    }
     await session.setTimeouts({ script: 3_000, pageLoad: 10_000, implicit: 0 });
     await session.get(dataUrl(`
       <input id="name" style="position:absolute;left:40px;top:40px;width:240px;height:40px" onclick="window.inputClicks=(window.inputClicks||0)+1">
@@ -83,13 +128,25 @@ async function main() {
     const consistent = ["x", "y", "width", "height"].every(
       (name) => Math.abs(geometry.bounding[name] - geometry.client[name]) <= 0.01,
     );
-    if (!consistent || geometry.dpr !== 1.25 || geometry.clicked !== 1 || geometry.inputClicks !== 0 || geometry.typed !== "node-humanize" || frameClicked !== 1) {
+    const checks = {
+      page: true,
+      frame: frameClicked === 1,
+      elementClick: geometry.clicked === 1,
+      elementType: geometry.typed === "node-humanize",
+      noPreparatoryClickForTyping: geometry.inputClicks === 0,
+      dpi: geometry.dpr === 1.25,
+      geometry: consistent,
+    };
+    const score = Object.values(checks).filter(Boolean).length / Object.keys(checks).length * 100;
+    if (score !== 100) {
       throw new Error(`Node SDK Humanize matrix mismatch: ${JSON.stringify({ geometry, frameClicked })}`);
     }
     const report = {
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       status: "PASS",
+      score,
+      checks,
       runtime: { node: process.version, platform: process.platform, arch: process.arch },
       matrix: { sdk: "node", headed: options.headed === true, page: true, frame: true, elementClick: true, elementType: true, dpi: 1.25, commandTimeoutMs: 3_000 },
       geometry,
@@ -102,8 +159,17 @@ async function main() {
     console.log(`artifact: ${options.output}`);
   } finally {
     if (session) await session.close();
-    else await service.close();
+    else if (service) await service.close();
+    await rm(handoffRoot, { recursive: true, force: true });
   }
+}
+
+async function protectWindowsHandoffFile(path) {
+  if (process.platform !== "win32") return;
+  const { stdout } = await execFileAsync("whoami", [], { windowsHide: true });
+  const identity = stdout.trim();
+  if (!identity) throw new Error("Unable to determine current Windows identity for handoff ACL");
+  await execFileAsync("icacls", [path, "/inheritance:r", "/grant:r", `${identity}:(F)`], { windowsHide: true });
 }
 
 await main();

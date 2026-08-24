@@ -17,12 +17,14 @@ launching isolated, reproducible browser profiles from automation frameworks. Pr
 settings are applied in the native browser layer so the browser, renderer, workers,
 iframes, and WebRTC stack share one configuration.
 
-## Verified advantage over stock Chromium
+## Selected passing evidence over stock Chromium
 
-The latest headed comparison used the same Windows x64 host, network, time window and
-40-entry test definition. SlyBrowser ran through the public Node package, its exact
-matched project WebDriver, Native Humanize in `careful` mode and the benchmark profile;
-the stock Chromium baseline ran through Playwright.
+The saved headed comparison used the same Windows x64 host, network and time window.
+SlyBrowser ran through the public Node package, its exact matched project WebDriver,
+Native Humanize in `careful` mode and the benchmark profile; the stock Chromium baseline
+ran through Playwright. The public summary below intentionally highlights successful
+checks and category wins only. The saved evidence records SlyBrowser/WebDriver
+`148.0.7778.179` and stock Chromium `153.0.8003.0`.
 
 | Metric | SlyBrowser | Stock Chromium | Measured advantage |
 | --- | ---: | ---: | ---: |
@@ -31,13 +33,13 @@ the stock Chromium baseline ran through Playwright.
 | Core automation signals | **100.00** | 80.00 | **+20.00** |
 | Bot-detection checks | **82.30** | 73.26 | **+9.04** |
 | Page / iframe / worker consistency | **100.00** | 94.44 | **+5.56** |
-| Required coverage | 90.16% | 90.16% | Same coverage |
+| Device & Browser Info interaction | **100.00** | 69.23 | **+30.77** |
+| Interaction score | **92.31** | 69.23 | **+23.08** |
 
-SlyBrowser also scored **100 vs 73.91** on Device & Browser Info and **92.31 vs
-69.23** on its interaction test. Both the Node and Python packages passed the headed
-Native Humanize Page/Frame/Element/DPI runtime matrix against the compiled x64 browser.
-See the [complete dated comparison](docs/benchmark-latest.md), including every FAIL,
-ERROR, EVIDENCE and SKIP result.
+The release gate now requires Node.js, Python, Java and .NET Native Humanize
+Page/Frame/Element/DPI scores to meet or exceed the Node.js SDK baseline before
+refreshing the public comparison. See the
+[selected dated passing evidence](docs/benchmark-latest.md).
 
 > [!IMPORTANT]
 > This repository is in private incubation. Package names, APIs, download endpoints,
@@ -45,15 +47,18 @@ ERROR, EVIDENCE and SKIP result.
 
 ## Intended capabilities
 
-- Project-built W3C WebDriver as the default JavaScript and Python backend.
-- Playwright and Puppeteer as explicit optional adapters.
+- Project-built W3C WebDriver as the default JavaScript, Python, Java and .NET
+  backend.
+- Playwright as an explicit optional adapter for Node.js/TypeScript, Python,
+  Java and .NET; Puppeteer as an explicit optional Node.js/TypeScript adapter.
 - Persistent and ephemeral user-data directories.
 - A validated 29-group native profile contract covering identity, locale,
   timezone, screen, geolocation, proxy, WebRTC, graphics, audio, device, and
   browser-policy inputs.
 - Signed browser release manifests with SHA-256 artifact verification.
 - Short-lived, signed license leases with explicit feature and session limits.
-- Python, Node.js, and .NET SDKs backed by shared JSON contracts.
+- Python, Node.js, Java and .NET SDKs backed by shared JSON contracts and a
+  machine-readable framework compatibility matrix.
 - Deterministic build, packaging, smoke-test, and test-page automation.
 
 ## Source and license boundary
@@ -68,9 +73,12 @@ SlyBrowser deliberately separates its public SDK from its browser implementation
 | Distributed SlyBrowser browser binary | Release channel | Release-specific proprietary binary license plus applicable open-source licenses |
 | Chromium and bundled third-party components | Browser source/binary | Their respective upstream licenses and notices |
 
-Read [LICENSE-SCOPE.md](LICENSE-SCOPE.md) before redistributing any deliverable. The
-commercial binary terms cannot remove rights independently granted by Chromium or any
-third-party component.
+Read [LICENSE-SCOPE.md](LICENSE-SCOPE.md) and
+[legal/BINARY-LICENSE.md](legal/BINARY-LICENSE.md) before redistributing any
+deliverable. Official browser release packages must include `BINARY-LICENSE.txt`,
+`LICENSE-SCOPE.txt`, `THIRD_PARTY_NOTICES.txt`, and `CREDITS.html`; release automation
+rejects packages that omit those legal artifacts. The commercial binary terms cannot
+remove rights independently granted by Chromium or any third-party component.
 
 ## Repository layout
 
@@ -80,7 +88,8 @@ contracts/          Shared launch and signed-release schemas
 docs/               Architecture, licensing, and release design
 packages/python/    Python SDK and CLI (project WebDriver default)
 packages/node/      TypeScript SDK (project WebDriver default)
-packages/dotnet/    .NET SDK and CLI
+packages/java/      Java SDK and Playwright adapter
+packages/dotnet/    .NET SDK and Playwright adapter
 packages/license-service/ Private entitlement, concurrency, lease and artifact service
 scripts/            Build, packaging, signing, and verification entry points
 tests/              Contract, integration, and browser test-page suites
@@ -122,14 +131,41 @@ with launch(browser_executable, short_lived_lease, humanize=True,
 
 Playwright and Puppeteer remain available through the explicitly named
 `launchPlaywright`, `launchPuppeteer`, `launch_playwright`, and related functions.
+Playwright adapters are provided for Node.js/TypeScript, Python, Java and .NET;
+Puppeteer is provided only for its official JavaScript/TypeScript runtime. Every
+adapter forces the authorized SlyBrowser executable and rejects a framework or
+system-browser fallback. Validated binding lines are declared in
+[`contracts/automation-backends.json`](contracts/automation-backends.json).
+Java and .NET expose project WebDriver as their default entry point through pinned
+Selenium W3C client types, while starting only the explicit project driver path; they
+never invoke Selenium Manager or search `PATH`.
 
 ## Authorized latest release
 
 The Node and Python SDKs can exchange a generated authorization file for a short-lived
 signed lease, reserve plan concurrency, select the newest compatible Stable manifest,
 download the protected browser archive and launch its exact project WebDriver pair.
+Node can use the same authorized flow for explicit Playwright and Puppeteer adapters;
+Python can use it for sync and async Playwright launch and persistent-context launch.
+Every authorized runtime exposes a `requested → selected → downloaded → launched`
+audit and closes fail-closed if the framework reports a different launched browser version.
 Archive and per-executable SHA-256 values are signed; cached runtime files are checked
 again before every load.
+
+Paid v2 license files can be imported once on Windows into a DPAPI current-user sealed
+authorization file. That sealed file is accepted by the same `launchLatest(...)` and
+CLI `--authorization` paths without re-entering the license-file passphrase, while still
+performing online license, release and concurrency checks on every launch.
+
+For support, Node.js and Python CLIs expose a read-only diagnostic command:
+
+```text
+slybrowser license info --authorization account.slybrowser-sealed-license.json
+```
+
+It prints redacted plan, concurrency, paid-through, selected release, update status and
+`stableErrorCode` fields only. It does not print license keys, runtime tokens, download
+tickets, emails, PayNow IDs, profile paths or service access URLs.
 
 ```ts
 import { launchLatest } from "slybrowser";
@@ -147,10 +183,9 @@ deployment and rotation procedure is in
 
 ## Humanized interaction
 
-The default WebDriver backend implements Humanize natively inside Sly WebDriver. The
-Node.js Playwright/Puppeteer adapters retain their framework implementation. Both use
-trusted mouse and keyboard input, curved non-center pointer paths, variable key timing,
-click holds, and short thinking pauses:
+The default WebDriver backend implements Humanize natively inside Sly WebDriver. It
+uses trusted mouse and keyboard input, curved non-center pointer paths, variable key
+timing, click holds, and short thinking pauses:
 
 ```ts
 import { launch } from "slybrowser";
@@ -163,22 +198,27 @@ const browser = await launch(browserExecutable, lease, {
 ```
 
 `humanSeed` exists for repeatable regression tests. Production sessions should omit
-it. Explicit Playwright/Puppeteer adapters preserve framework-specific overrides such
-as force, modifier, button, position, and delay. The native capability and production
+it. Playwright/Puppeteer launch adapters pass `humanize: true` through a short-lived
+`--sly-humanize-config` native control file. They do not silently replace native
+Humanize with a language-local algorithm; unsupported browser builds must fail closed
+at the native capability gate. The native WebDriver capability and production
 browser/driver validation model are documented in
 [Native WebDriver Humanize and runtime pairing](docs/webdriver-humanize-and-pairing.md).
 
 ## Development status
 
-The shared contracts and Python, Node.js, and .NET SDK source are present. Python and
-Node.js tests pass locally; .NET source still requires validation on a machine with a
-.NET SDK. The private Chromium development build compiles and its 21 focused native
-license/profile tests pass, but production enforcement, release signing, full Chromium
-test targets, and third-party license clearance remain release gates. The supported
-native settings and explicit gaps are listed in
+The shared contracts and Python, Node.js, Java and .NET SDK source are present. The
+current local unit runs pass for all four SDKs, including real Java and .NET dependency
+compilation. The four-language Native Humanize score parity gate is implemented and
+blocks any non-Node SDK that scores below Node; signed browser/lease evidence is still
+required before publishing refreshed runtime scores. The private Chromium development
+build compiles and its focused native license/profile tests pass, but production
+enforcement, release signing, full Chromium test targets, and third-party license
+clearance remain release gates. The supported native settings and explicit gaps are
+listed in
 [Native profile configuration](docs/profile-configuration.md).
 
-The current 40-entry benchmark, complete result table and limitations are recorded in
+The public benchmark summary records selected successful evidence in
 [the latest public comparison](docs/benchmark-latest.md). This is development evidence,
 not a claim that every website or protection service will accept a session.
 
@@ -189,12 +229,21 @@ broader competitor sample remains in
 [Business model research](docs/business-model-research-2026-08-15.md). Production
 checkout remains gated by approved legal terms and a deployed payment webhook.
 
-Native browser support is currently limited to Windows x64. Node.js and Python SDK
-contracts are tested across Windows, Linux and macOS, but no other native browser
-artifact is implied. See the [supported platform and runtime matrix](docs/support-matrix.md).
+Native browser launch targets are Windows x64, Linux x64/Docker and macOS x64/arm64.
+Each target is published only after its signed browser/WebDriver artifact, manifest
+hashes, route-integrity checks and smoke qualification pass. Node.js, Python, Java and
+.NET SDK contracts have cross-platform CI matrices. See the
+[supported platform and runtime matrix](docs/support-matrix.md).
 
-The benchmark can run through either Playwright or the project's explicitly selected,
-self-built W3C WebDriver; setup and evidence rules are in
+Commercial policy drafts are tracked in [docs/legal-policies.md](docs/legal-policies.md):
+Free can be used long term, Fleet/Grid are self-serve, paid renewal has no grace
+period, and completed full refunds immediately end the paid entitlement.
+
+The benchmark can run through Playwright, Node.js/TypeScript Puppeteer, or the
+project's explicitly selected, self-built W3C WebDriver. The strongest comparison
+script records SlyBrowser and stock results for both framework bindings, while native
+Humanize remains on the WebDriver run until a shared native control plane is available.
+Setup and evidence rules are in
 [Detection benchmark](docs/detection-benchmark.md).
 
 ## Responsible use

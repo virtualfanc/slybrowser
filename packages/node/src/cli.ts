@@ -3,8 +3,17 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
+import { LicenseServiceError } from "./errors.js";
 import { installLatestAuthorizedBrowser } from "./licensed.js";
+import {
+  LicenseServiceClient,
+  importLicenseFileToSealedAuthorization,
+  readLicenseAuthorization,
+  type BrowserVersionPolicy,
+  type KernelMajor,
+} from "./service.js";
 import { defaultDriverExecutable } from "./webdriver.js";
 
 function parseTrustedKeys(value: string | undefined, name: string): Record<string, Buffer> {
@@ -21,26 +30,87 @@ function parseTrustedKeys(value: string | undefined, name: string): Record<strin
   return result;
 }
 
-async function main(): Promise<number> {
-  const [command, ...arguments_] = process.argv.slice(2);
+function optionValue(arguments_: readonly string[], name: string): string | undefined {
+  const index = arguments_.indexOf(name);
+  return index >= 0 ? arguments_[index + 1] : undefined;
+}
+
+function optionValues(arguments_: readonly string[], name: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const value = arguments_[index + 1];
+    if (arguments_[index] === name && value !== undefined) values.push(value);
+  }
+  return values;
+}
+
+export function parseKernelMajorArgument(value: string): KernelMajor;
+export function parseKernelMajorArgument(value: undefined): undefined;
+export function parseKernelMajorArgument(value: string | undefined): KernelMajor | undefined {
+  if (value === undefined) return undefined;
+  if (value === "latest") return "latest";
+  if (/^[1-9][0-9]*$/.test(value)) return Number(value);
+  throw new Error("--kernel-major must be a positive integer or latest");
+}
+
+export function parseInstallSelectionArguments(arguments_: readonly string[]): {
+  browserVersion?: string;
+  versionPolicy?: BrowserVersionPolicy;
+  kernelMajor?: KernelMajor;
+  updateKernel: boolean;
+} {
+  const browserVersion = optionValue(arguments_, "--version");
+  const rollback = arguments_.includes("--rollback");
+  if (rollback && !browserVersion) {
+    throw new Error("--rollback requires --version VERSION");
+  }
+  const selection: {
+    browserVersion?: string;
+    versionPolicy?: BrowserVersionPolicy;
+    kernelMajor?: KernelMajor;
+    updateKernel: boolean;
+  } = { updateKernel: arguments_.includes("--update-kernel") };
+  if (browserVersion !== undefined) {
+    selection.browserVersion = browserVersion;
+    selection.versionPolicy = rollback ? "at-or-before" : "exact";
+  }
+  const kernelMajor = optionValue(arguments_, "--kernel-major");
+  if (kernelMajor !== undefined) selection.kernelMajor = parseKernelMajorArgument(kernelMajor);
+  return selection;
+}
+
+export function licenseServiceErrorOutput(error: LicenseServiceError): {
+  schemaVersion: 1;
+  status: "error";
+  stableErrorCode: string;
+  httpStatus: number | null;
+} {
+  return {
+    schemaVersion: 1,
+    status: "error",
+    stableErrorCode: error.code,
+    httpStatus: error.status || null,
+  };
+}
+
+export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
+  const [command, ...arguments_] = argv;
   if (command === "--version" || command === "-V") {
     console.log("0.1.0");
     return 0;
   }
   if (command === "install") {
-    const authorizationIndex = arguments_.indexOf("--authorization");
-    const authorization = authorizationIndex >= 0 ? arguments_[authorizationIndex + 1] : undefined;
+    const authorization = optionValue(arguments_, "--authorization");
     if (!authorization) {
-      console.error("Usage: slybrowser install --authorization FILE [--cache DIR] [--version VERSION] [--rollback]");
+      console.error("Usage: slybrowser install --authorization FILE [--cache DIR] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback]");
       return 2;
     }
-    const cacheIndex = arguments_.indexOf("--cache");
-    const cacheRoot = cacheIndex >= 0 ? arguments_[cacheIndex + 1] : undefined;
-    const versionIndex = arguments_.indexOf("--version");
-    const browserVersion = versionIndex >= 0 ? arguments_[versionIndex + 1] : undefined;
-    const rollback = arguments_.includes("--rollback");
-    if (rollback && !browserVersion) {
-      console.error("--rollback requires --version VERSION");
+    const cacheRoot = optionValue(arguments_, "--cache");
+    let selection: ReturnType<typeof parseInstallSelectionArguments>;
+    try {
+      selection = parseInstallSelectionArguments(arguments_);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
       return 2;
     }
     const authorized = await installLatestAuthorizedBrowser(resolve(authorization), {
@@ -49,8 +119,7 @@ async function main(): Promise<number> {
         releaseTrustedKeys: parseTrustedKeys(process.env.SLYBROWSER_RELEASE_PUBLIC_KEYS_JSON, "SLYBROWSER_RELEASE_PUBLIC_KEYS_JSON"),
       },
       ...(cacheRoot === undefined ? {} : { install: { cacheRoot: resolve(cacheRoot) } }),
-      ...(browserVersion === undefined ? {} : { browserVersion }),
-      ...(browserVersion === undefined ? {} : { versionPolicy: rollback ? "at-or-before" : "exact" }),
+      ...selection,
     });
     try {
       console.log(JSON.stringify({
@@ -63,7 +132,12 @@ async function main(): Promise<number> {
         launchedVersion: null,
         versionPolicy: authorized.grant.versionPolicy,
         selectionReason: authorized.grant.selectionReason,
+        requestedKernelMajor: authorized.grant.requestedKernelMajor ?? null,
+        selectionMode: authorized.grant.selectionMode ?? null,
         availableVersions: authorized.grant.availableBrowserVersions,
+        latestAvailableVersion: authorized.grant.latestAvailableVersion ?? null,
+        updateAvailable: authorized.grant.updateAvailable ?? null,
+        updateRequired: authorized.grant.updateRequired ?? null,
         updateRights: authorized.grant.updateRights,
         platform: authorized.installation.platform,
         arch: authorized.installation.arch,
@@ -76,8 +150,69 @@ async function main(): Promise<number> {
     }
     return 0;
   }
+  if (command === "license") {
+    const [licenseCommand, ...licenseArguments] = arguments_;
+    if (licenseCommand === "info") {
+      const authorization = optionValue(licenseArguments, "--authorization");
+      if (!authorization) {
+        console.error("Usage: slybrowser license info --authorization FILE [--passphrase VALUE] [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback]");
+        return 2;
+      }
+      let selection: ReturnType<typeof parseInstallSelectionArguments>;
+      try {
+        selection = parseInstallSelectionArguments(licenseArguments);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 2;
+      }
+      const trustedServiceUrls = optionValues(licenseArguments, "--trusted-service-url");
+      const licenseFilePassphrase = optionValue(licenseArguments, "--passphrase");
+      const licenseFileTrustedKeys = process.env.SLYBROWSER_LICENSE_FILE_PUBLIC_KEYS_JSON
+        ? parseTrustedKeys(process.env.SLYBROWSER_LICENSE_FILE_PUBLIC_KEYS_JSON, "SLYBROWSER_LICENSE_FILE_PUBLIC_KEYS_JSON")
+        : undefined;
+      try {
+        const document = await readLicenseAuthorization(resolve(authorization), {
+          ...(licenseFilePassphrase === undefined ? {} : { licenseFilePassphrase }),
+          ...(licenseFileTrustedKeys === undefined ? {} : { licenseFileTrustedKeys }),
+          ...(trustedServiceUrls.length ? { trustedServiceUrls } : {}),
+        });
+        const client = new LicenseServiceClient(document, {
+          licenseTrustedKeys: parseTrustedKeys(process.env.SLYBROWSER_LICENSE_PUBLIC_KEYS_JSON, "SLYBROWSER_LICENSE_PUBLIC_KEYS_JSON"),
+          releaseTrustedKeys: parseTrustedKeys(process.env.SLYBROWSER_RELEASE_PUBLIC_KEYS_JSON, "SLYBROWSER_RELEASE_PUBLIC_KEYS_JSON"),
+        });
+        const info = await client.licenseInfo(selection);
+        console.log(JSON.stringify(info, null, 2));
+        return 0;
+      } catch (error) {
+        if (error instanceof LicenseServiceError) {
+          console.log(JSON.stringify(licenseServiceErrorOutput(error), null, 2));
+          return 1;
+        }
+        throw error;
+      }
+    }
+    if (licenseCommand !== "import") {
+      console.error("Usage: slybrowser license info --authorization FILE [--passphrase VALUE] [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license import --input FILE --output FILE --passphrase VALUE [--trusted-service-url URL]");
+      return 2;
+    }
+    const input = optionValue(licenseArguments, "--input");
+    const output = optionValue(licenseArguments, "--output");
+    const passphrase = optionValue(licenseArguments, "--passphrase");
+    if (!input || !output || !passphrase) {
+      console.error("Usage: slybrowser license import --input FILE --output FILE --passphrase VALUE [--trusted-service-url URL]");
+      return 2;
+    }
+    const trustedServiceUrls = optionValues(licenseArguments, "--trusted-service-url");
+    const result = await importLicenseFileToSealedAuthorization(resolve(input), resolve(output), {
+      licenseFilePassphrase: passphrase,
+      licenseFileTrustedKeys: parseTrustedKeys(process.env.SLYBROWSER_LICENSE_FILE_PUBLIC_KEYS_JSON, "SLYBROWSER_LICENSE_FILE_PUBLIC_KEYS_JSON"),
+      ...(trustedServiceUrls.length ? { trustedServiceUrls } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  }
   if (command !== "doctor") {
-    console.error("Usage: slybrowser doctor [--browser PATH] [--driver PATH] | install --authorization FILE [--cache DIR] [--version VERSION] [--rollback]");
+    console.error("Usage: slybrowser doctor [--browser PATH] [--driver PATH] | install --authorization FILE [--cache DIR] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license info --authorization FILE [--passphrase VALUE] [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license import --input FILE --output FILE --passphrase VALUE [--trusted-service-url URL]");
     return 2;
   }
   const browserIndex = arguments_.indexOf("--browser");
@@ -118,4 +253,6 @@ async function main(): Promise<number> {
   return !browser || browserExists && driverExists ? 0 : 2;
 }
 
-process.exitCode = await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = await main();
+}

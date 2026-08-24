@@ -1,14 +1,58 @@
 import { createPrivateKey, randomBytes, sign, type KeyObject } from "node:crypto";
 
+export interface LeasePrivateModuleClaim {
+  path: string;
+  sha256: string;
+  size: number;
+  abi: string;
+}
+
+export interface LeaseResourceClaim {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface LeaseCodeSignatureClaim {
+  scheme: "authenticode" | "apple-developer-id" | "x509-code-signing";
+  subject: string;
+  certificateSha256: string;
+  timestampRequired: boolean;
+}
+
+export interface LeaseArtifactClaim {
+  sha256: string;
+  platform: "windows" | "linux" | "macos";
+  arch: "x64" | "arm64";
+  archiveFormat: "zip";
+  browserExecutable: string;
+  driverExecutable: string;
+  browserSha256: string;
+  driverSha256: string;
+  privateModules: LeasePrivateModuleClaim[];
+  resources: LeaseResourceClaim[];
+  codeSignature?: LeaseCodeSignatureClaim;
+}
+
 export interface LeaseClaims {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   licenseId: string;
   audience: "slybrowser";
   issuedAt: number;
   notBefore: number;
   expiresAt: number;
+  browserVersion?: string;
   browserMin: string;
   browserMax: string;
+  planId: string;
+  concurrencyLimit: number;
+  paidThrough: number | null;
+  licenseStatus: "active" | "hold" | "revoked";
+  artifactSha256: string;
+  browserSha256: string;
+  driverSha256: string;
+  artifact?: LeaseArtifactClaim;
+  leaseGeneration: number;
   features: string[];
   sessionId: string;
   nonce: string;

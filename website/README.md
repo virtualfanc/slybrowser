@@ -10,16 +10,18 @@ pnpm --dir website build
 
 The production bundle is written to `website/dist`.
 
-## CDN and API origin
+## Website cache and API origin
 
 Production HTML is intentionally non-cacheable, while Vite's hashed `/assets/` files
-are immutable and safe for long-lived Cloudflare caching. Browser, account, license and
-billing APIs use `VITE_SLY_API_ORIGIN=https://api.slybrowser.com`; that hostname is DNS
-only and every response must include `Cache-Control: no-store`.
+are immutable and safe for long-lived edge caching. Browser, account, license, billing
+and first-launch release download APIs use `VITE_SLY_API_ORIGIN=https://api.slybrowser.com`;
+that hostname is DNS only and every sensitive or authorization-bound response must include
+`Cache-Control: no-store`.
 
 Do not introduce new application endpoints under `https://slybrowser.com/api`. The
 Cloudflare zone includes a defensive cache-bypass rule for that path, but the dedicated
-API hostname is the canonical route.
+API hostname is the canonical route. A download CDN worker is optional after launch and
+must pass `website/scripts/check-security.mjs` before it can be enabled.
 
 ## PayNow checkout
 

@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { arch, platform } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { chromium } from "playwright-core";
+import puppeteer from "puppeteer-core";
 
 import { compareRuns, renderMarkdown } from "./compare.mjs";
 import { summarizeResults } from "./score.mjs";
@@ -14,6 +16,21 @@ import { parseDeviceInfo, parseDeviceInteractions } from "./webdriver-adapters.m
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const localPages = resolve(scriptDirectory, "pages");
+const require = createRequire(import.meta.url);
+const automationContract = require("../../contracts/automation-backends.json");
+const frameworkVersions = Object.freeze({
+  "playwright-core": require("playwright-core/package.json").version,
+  "puppeteer-core": require("puppeteer-core/package.json").version,
+});
+
+function validateFrameworkBinding(provider, version) {
+  const backend = provider === "playwright-core" ? "playwright" : provider === "puppeteer-core" ? "puppeteer" : null;
+  if (!backend) return;
+  const supported = automationContract.bindings.node.backends[backend]?.supportedLines ?? [];
+  if (!supported.some((line) => version === line || version.startsWith(`${line}.`))) {
+    throw new Error(`${provider} ${version} is outside validated line(s): ${supported.join(", ")}`);
+  }
+}
 
 function parseArguments(arguments_) {
   const options = {
@@ -347,6 +364,130 @@ async function evaluateAdapter(site, page, common, bodyText) {
   return { status: "EVIDENCE", score: null, metrics: { common } };
 }
 
+function normalizeAccessibleName(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+async function findPuppeteerRoleElement(page, role, name, timeout = 10_000) {
+  if (role !== "button") throw new Error(`Puppeteer role adapter does not support role: ${role}`);
+  const matcher = name instanceof RegExp
+    ? { source: name.source, flags: name.flags }
+    : { source: `^${String(name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, flags: "i" };
+  const deadline = Date.now() + timeout;
+  do {
+    const handles = await page.$$('button,[role="button"],input[type="button"],input[type="submit"]');
+    for (const handle of handles) {
+      const state = await handle.evaluate((element, pattern) => {
+        const label = element.getAttribute("aria-label")
+          || ("value" in element ? element.value : "")
+          || element.textContent
+          || "";
+        const style = getComputedStyle(element);
+        const rectangle = element.getBoundingClientRect();
+        return {
+          matches: new RegExp(pattern.source, pattern.flags).test(label.replace(/\s+/g, " ").trim()),
+          visible: style.visibility !== "hidden" && style.display !== "none" && rectangle.width > 0 && rectangle.height > 0,
+        };
+      }, matcher);
+      if (state.matches && state.visible) return handle;
+      await handle.dispose();
+    }
+    if (Date.now() < deadline) await new Promise((accept) => setTimeout(accept, 50));
+  } while (Date.now() < deadline);
+  throw new Error(`Timed out waiting for ${role} named ${normalizeAccessibleName(name)}`);
+}
+
+function puppeteerLocator(page, selector) {
+  async function element(timeout = 10_000) {
+    const handle = await page.waitForSelector(selector, { visible: true, timeout });
+    if (!handle) throw new Error(`Element not found: ${selector}`);
+    return handle;
+  }
+  return {
+    async innerText(options = {}) {
+      const handle = await element(options.timeout);
+      try { return await handle.evaluate((node) => node.innerText ?? ""); }
+      finally { await handle.dispose(); }
+    },
+    async textContent(options = {}) {
+      const handle = await element(options.timeout);
+      try { return await handle.evaluate((node) => node.textContent); }
+      finally { await handle.dispose(); }
+    },
+    async inputValue(options = {}) {
+      const handle = await element(options.timeout);
+      try { return await handle.evaluate((node) => "value" in node ? node.value : ""); }
+      finally { await handle.dispose(); }
+    },
+    async fill(value, options = {}) {
+      const handle = await element(options.timeout);
+      try {
+        await handle.evaluate((node, nextValue) => {
+          node.focus();
+          if (!("value" in node)) throw new Error("Element does not expose a value property");
+          const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), "value");
+          if (descriptor?.set) descriptor.set.call(node, nextValue);
+          else node.value = nextValue;
+          node.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: nextValue }));
+          node.dispatchEvent(new Event("change", { bubbles: true }));
+        }, value);
+      } finally {
+        await handle.dispose();
+      }
+    },
+  };
+}
+
+function adaptPuppeteerPage(page) {
+  return new Proxy(page, {
+    get(target, property) {
+      if (property === "locator") return (selector) => puppeteerLocator(target, selector);
+      if (property === "getByRole") {
+        return (role, options = {}) => {
+          const locator = {
+            first() { return locator; },
+            async isVisible(settings = {}) {
+              try {
+                const handle = await findPuppeteerRoleElement(target, role, options.name, settings.timeout ?? 1_000);
+                await handle.dispose();
+                return true;
+              } catch { return false; }
+            },
+            async click(settings = {}) {
+              const handle = await findPuppeteerRoleElement(target, role, options.name, settings.timeout ?? 10_000);
+              try { await handle.click(); }
+              finally { await handle.dispose(); }
+            },
+          };
+          return locator;
+        };
+      }
+      if (property === "waitForTimeout") return (milliseconds) => new Promise((accept) => setTimeout(accept, milliseconds));
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+async function createPuppeteerContext(browser, options) {
+  const context = await browser.createBrowserContext();
+  return {
+    async newPage() {
+      const page = await context.newPage();
+      if (options.proxy?.username || options.proxy?.password) {
+        await page.authenticate({
+          username: options.proxy.username ?? "",
+          password: options.proxy.password ?? "",
+        });
+      }
+      if (options.viewport) await page.setViewport(options.viewport);
+      if (options.timezoneId) await page.emulateTimezone(options.timezoneId);
+      return adaptPuppeteerPage(page);
+    },
+    async close() { await context.close(); },
+  };
+}
+
 async function exercisePage(page) {
   try {
     await page.mouse.move(120, 120, { steps: 8 });
@@ -452,10 +593,19 @@ async function runBrowser(target, sites, options, localOrigin, siteDefinitionHas
     viewport: browserTarget.viewport ?? { width: 1365, height: 768 },
     ignoreHTTPSErrors: false,
   };
-  let automationProvider = "playwright-core";
+  const requestedProvider = browserTarget.provider ?? "playwright-core";
+  if (!new Set(["playwright-core", "puppeteer-core", "cloakbrowser-wrapper"]).has(requestedProvider)) {
+    throw new Error(`${browserTarget.name} uses unsupported provider: ${requestedProvider}`);
+  }
+  let automationProvider = requestedProvider;
+  let frameworkVersion = requestedProvider === "cloakbrowser-wrapper"
+    ? frameworkVersions["playwright-core"]
+    : frameworkVersions[requestedProvider];
+  validateFrameworkBinding(requestedProvider === "cloakbrowser-wrapper" ? "playwright-core" : requestedProvider, frameworkVersion);
   let humanize = null;
   let productFeatures = null;
-  if (browserTarget.provider === "cloakbrowser-wrapper") {
+  let createContext;
+  if (requestedProvider === "cloakbrowser-wrapper") {
     if (!browserTarget.wrapperModule) {
       throw new Error(`${browserTarget.name} requires wrapperModule for provider cloakbrowser-wrapper`);
     }
@@ -483,6 +633,7 @@ async function runBrowser(target, sites, options, localOrigin, siteDefinitionHas
     effectiveLaunchArgs = launchOptions.args ?? [];
     browser = await chromium.launch(launchOptions);
     await cloak.humanizeBrowser(browser, cloakOptions);
+    createContext = () => browser.newContext(contextOptions);
     contextOptions = {
       viewport: browserTarget.viewport ?? (headless ? { width: 1920, height: 947 } : null),
       ignoreHTTPSErrors: false,
@@ -500,6 +651,24 @@ async function runBrowser(target, sites, options, localOrigin, siteDefinitionHas
       timezone: cloakOptions.timezone ?? null,
       proxyConfigured: Boolean(cloakOptions.proxy),
     };
+  } else if (requestedProvider === "puppeteer-core") {
+    if (browserTarget.proxy?.server) effectiveLaunchArgs = [...effectiveLaunchArgs, `--proxy-server=${browserTarget.proxy.server}`];
+    if (browserTarget.locale && !effectiveLaunchArgs.some((argument) => argument.startsWith("--lang="))) {
+      effectiveLaunchArgs = [...effectiveLaunchArgs, `--lang=${browserTarget.locale}`];
+    }
+    browser = await puppeteer.launch({
+      executablePath: executable,
+      headless,
+      args: effectiveLaunchArgs,
+      acceptInsecureCerts: false,
+    });
+    createContext = () => createPuppeteerContext(browser, { ...contextOptions, proxy: browserTarget.proxy });
+    humanize = { enabled: false, reason: "native-control-plane-not-advertised" };
+    productFeatures = {
+      locale: browserTarget.locale ?? null,
+      timezone: browserTarget.timezone ?? null,
+      proxyConfigured: Boolean(browserTarget.proxy),
+    };
   } else {
     browser = await chromium.launch({
       executablePath: executable,
@@ -507,10 +676,17 @@ async function runBrowser(target, sites, options, localOrigin, siteDefinitionHas
       args: effectiveLaunchArgs,
       proxy: browserTarget.proxy,
     });
+    createContext = () => browser.newContext(contextOptions);
+    humanize = { enabled: false, reason: "native-control-plane-not-advertised" };
+    productFeatures = {
+      locale: browserTarget.locale ?? null,
+      timezone: browserTarget.timezone ?? null,
+      proxyConfigured: Boolean(browserTarget.proxy),
+    };
   }
   const startedAt = new Date().toISOString();
   try {
-    const context = await browser.newContext(contextOptions);
+    const context = await createContext();
     const results = [];
     for (const site of sites) {
       const resolution = resolveSiteUrl(site, localOrigin);
@@ -537,13 +713,16 @@ async function runBrowser(target, sites, options, localOrigin, siteDefinitionHas
     const metadata = {
       id: browserTarget.id,
       name: browserTarget.name,
-      browserVersion: browser.version(),
+      browserVersion: await browser.version(),
       executable,
       executableSize: executableInfo.size,
       executableSha256: await sha256File(executable),
       headless,
-      launchArgs: effectiveLaunchArgs.map((argument) => argument.replace(/(--sly-license-file=).+/, "$1<redacted>")),
+      launchArgs: effectiveLaunchArgs.map((argument) => argument
+        .replace(/(--sly-license-file=).+/, "$1<redacted>")
+        .replace(/(--sly-config-file=).+/, "$1<redacted>")),
       automationProvider,
+      frameworkVersion,
       humanize,
       productFeatures,
     };
@@ -555,7 +734,7 @@ async function runBrowser(target, sites, options, localOrigin, siteDefinitionHas
       browser: metadata,
       environment: { platform: platform(), arch: arch(), node: process.version },
       methodology: {
-        playwrightCore: "1.62.1",
+        framework: { name: automationProvider, version: frameworkVersion },
         automationProvider,
         humanize,
         productFeatures,

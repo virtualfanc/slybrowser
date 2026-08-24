@@ -1,4 +1,5 @@
 import {
+  launchAuthorized,
   SlyWebDriverElement,
   SlyWebDriverService,
 } from "../../packages/node/dist/index.js";
@@ -170,5 +171,45 @@ export async function startNodeSdkDriver(driverExecutable, options = {}) {
       });
     },
     async close() { await service.close(); },
+  };
+}
+
+export async function startAuthorizedNodeSdkDriver(authorizationFile, options = {}) {
+  const sessions = new Set();
+  return {
+    async createSession(_browserExecutable, launchOptions = {}) {
+      const session = await launchAuthorized(authorizationFile, {
+        trust: options.trust,
+        ...(options.cacheRoot == null ? {} : { install: { cacheRoot: options.cacheRoot } }),
+        platform: "windows",
+        arch: "x64",
+        updateKernel: false,
+        automationBackend: "project-webdriver",
+        profile: launchOptions.profile,
+        args: launchOptions.args,
+        headless: launchOptions.headless,
+        viewport: launchOptions.viewport,
+        excludeSwitches: launchOptions.excludeSwitches,
+        humanize: launchOptions.humanize?.enabled,
+        humanPreset: launchOptions.humanize?.preset,
+        humanConfig: launchOptions.humanize?.config,
+        humanSeed: launchOptions.humanize?.seed,
+        commandTimeout: launchOptions.humanize?.commandTimeout,
+        nativeReady: true,
+        nativeReadyTimeout: options.nativeReadyTimeout ?? 15_000,
+      });
+      sessions.add(session);
+      session.addCloseCallback(() => {
+        sessions.delete(session);
+      });
+      return new NodeSdkBenchmarkClient(session, {
+        captureBrowserLogs: launchOptions.captureBrowserLogs,
+        humanize: launchOptions.humanize,
+      });
+    },
+    async close() {
+      await Promise.allSettled([...sessions].map((session) => session.close()));
+      sessions.clear();
+    },
   };
 }

@@ -30,17 +30,23 @@ The website and DNS-only API currently share one public IP. That means the origi
 be firewalled to Cloudflare IP ranges only without also blocking the API. A separate API
 origin IP or Cloudflare Tunnel is required if origin concealment becomes a requirement.
 
-## Reserved API routes
+## API reverse-proxy routes
 
-The hostname is provisioned before the production service is ready. Until a reviewed
-backend is deployed, `/healthz` reports a reserved service and all other paths return a
-JSON `404`.
+The checked-in nginx production draft keeps `/healthz` as a reserved gateway health
+response and proxies reviewed route families to local services. Production is not
+considered deployed until the server config has been applied, syntax-tested on the
+target host, and exercised with real secrets.
 
-Planned route families:
+Route families:
 
-- `/v1/licenses/*` — short-lived lease issue, renew and revoke operations;
-- `/v1/billing/*` — PayNow checkout support and verified webhook receiver;
-- `/v1/accounts/*` — authenticated account and entitlement state.
+- `127.0.0.1:8787` — `/v1/billing/*` and `/v1/feedback` for PayNow checkout,
+  customer order status, email delivery callbacks, webhook receiving and feedback.
+- `127.0.0.1:8788` — `/v1/plans`, `/v1/licenses/*`, `/v1/releases/artifacts/*`,
+  `/v2/runtime/*` and `/v1/admin/licenses*` for license issuance, runtime leases and
+  protected browser artifacts.
 
-Do not place these routes under `https://slybrowser.com/api`. The public website host is
-CDN-proxied and optimized for immutable static assets.
+The public website host also proxies only the narrow browser-needed surface
+(`/v1/billing/checkout-intents`, checkout status, customer order status/resend and
+`/v1/feedback`) so same-origin static pages work without CORS. Do not place these
+routes under `https://slybrowser.com/api`. The public website host is CDN-proxied and
+optimized for immutable static assets.

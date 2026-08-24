@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildWebDriverSessionPayload,
   defaultDriverExecutable,
+  deriveReleaseRoot,
   describeDefaultDriver,
   SlyWebDriverService,
   SlyWebDriverSession,
@@ -28,6 +29,17 @@ describe("default project WebDriver backend", () => {
     expect(defaultDriverExecutable(browser)).toBe(resolve("configured", "slydriver.exe"));
     expect(defaultDriverExecutable(browser, resolve("explicit", "slydriver.exe"))).toBe(resolve("explicit", "slydriver.exe"));
     expect(describeDefaultDriver(browser).backend).toBe("project-webdriver");
+  });
+
+  it("derives the release root from the signed artifact executable path", () => {
+    expect(deriveReleaseRoot(
+      resolve("cache", "SlyBrowser", "SlyBrowser.exe"),
+      "SlyBrowser/SlyBrowser.exe",
+    )).toBe(resolve("cache"));
+    expect(deriveReleaseRoot(
+      resolve("cache", "SlyBrowser", "SlyBrowser.exe"),
+      "OtherBrowser/SlyBrowser.exe",
+    )).toBeUndefined();
   });
 
   it("builds a session for the exact browser with secure handoff and stealth defaults", () => {
@@ -56,11 +68,11 @@ describe("default project WebDriver backend", () => {
 
   it("requires project browser and driver major versions to match", () => {
     expect(validateWebDriverCapabilities({
-      browserVersion: "148.0.7778.179",
-      chrome: { chromedriverVersion: "148.0.7778.179 (abcdef)" },
-    })).toEqual({ browserVersion: "148.0.7778.179", driverVersion: "148.0.7778.179", browserMajor: 148 });
+      browserVersion: "123.0.4567.89",
+      chrome: { chromedriverVersion: "123.0.4567.89 (abcdef)" },
+    })).toEqual({ browserVersion: "123.0.4567.89", driverVersion: "123.0.4567.89", browserMajor: 123 });
     expect(() => validateWebDriverCapabilities({
-      browserVersion: "148.0.7778.179",
+      browserVersion: "123.0.4567.89",
       chrome: { chromedriverVersion: "149.0.1.0" },
     })).toThrow(/different major versions/);
   });
@@ -77,8 +89,8 @@ describe("default project WebDriver backend", () => {
   it("fails closed when native Humanize is not advertised", () => {
     const service = { executable: resolve("build", "chromedriver.exe") } as unknown as SlyWebDriverService;
     const capabilities = {
-      browserVersion: "148.0.7778.179",
-      chrome: { chromedriverVersion: "148.0.7778.179 (abcdef)" },
+      browserVersion: "123.0.4567.89",
+      chrome: { chromedriverVersion: "123.0.4567.89 (abcdef)" },
     };
     expect(() => new SlyWebDriverSession(
       service,
@@ -91,7 +103,7 @@ describe("default project WebDriver backend", () => {
 
   it("maps one coherent mobile persona into ChromeDriver emulation", () => {
     const persona = {
-      userAgent: "Mozilla/5.0 Mobile SlyBrowser/148",
+      userAgent: "Mozilla/5.0 Mobile SlyBrowser/123",
       deviceMetrics: { width: 390, height: 844, pixelRatio: 3, mobile: true as const, touch: true as const },
       clientHints: { platform: "Android", mobile: true as const, platformVersion: "15.0.0" },
     };
@@ -122,8 +134,8 @@ describe("default project WebDriver backend", () => {
         commandTimeout: 1000,
       } as unknown as SlyWebDriverService;
       const session = new SlyWebDriverSession(service, "session-id", {
-        browserVersion: "148.0.7778.179",
-        chrome: { chromedriverVersion: "148.0.7778.179 (abcdef)" },
+        browserVersion: "123.0.4567.89",
+        chrome: { chromedriverVersion: "123.0.4567.89 (abcdef)" },
       }, resolve("build", "SlyBrowser.exe"));
       await expect(session.addVirtualAuthenticator()).resolves.toBe("authenticator-id");
       await session.removeVirtualAuthenticator("authenticator-id");
@@ -151,7 +163,7 @@ describe("default project WebDriver backend", () => {
     try {
       const service = { executable: resolve("chromedriver.exe"), origin: `http://127.0.0.1:${address.port}`, commandTimeout: 1000 } as unknown as SlyWebDriverService;
       const session = new SlyWebDriverSession(service, "session-id", {
-        browserVersion: "148.0.7778.179", chrome: { chromedriverVersion: "148.0.7778.179" },
+        browserVersion: "123.0.4567.89", chrome: { chromedriverVersion: "123.0.4567.89" },
       }, resolve("SlyBrowser.exe"));
       await expect(session.executeAsyncScript("arguments[arguments.length - 1]('ok')")).resolves.toBe("async-result");
       await expect(session.browserLogs()).resolves.toEqual([]);
@@ -185,7 +197,7 @@ describe("default project WebDriver backend", () => {
     try {
       const service = { executable: resolve("chromedriver.exe"), origin: `http://127.0.0.1:${address.port}`, commandTimeout: 1000 } as unknown as SlyWebDriverService;
       const session = new SlyWebDriverSession(service, "session-id", {
-        browserVersion: "148.0.7778.179", chrome: { chromedriverVersion: "148.0.7778.179" },
+        browserVersion: "123.0.4567.89", chrome: { chromedriverVersion: "123.0.4567.89" },
       }, resolve("SlyBrowser.exe"));
       await expect(session.newWindow()).resolves.toEqual({ handle: "tab-2", type: "tab" });
       await session.switchToWindow("tab-2");

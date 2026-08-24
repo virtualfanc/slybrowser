@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access, mkdir, open, rm, stat } from "node:fs/promises";
+import { access, mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { ConfigurationError } from "./errors.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface LaunchPlan {
   executable: string;
@@ -13,6 +17,14 @@ export interface LaunchPlan {
   configFile: string;
   licenseFile: string;
   driverLicenseFile?: string;
+  runtimeFile?: string;
+  driverRuntimeFile?: string;
+  releaseRoot?: string;
+  humanizeConfigFile?: string;
+  nativeReadyRequestFile?: string;
+  nativeReadyFile?: string;
+  nativeReadyNonce?: string;
+  waitForNativeReady(timeout?: number): Promise<void>;
   cleanup(): Promise<void>;
 }
 
@@ -150,7 +162,80 @@ async function privateFile(directory: string, prefix: string, payload: Buffer): 
     throw error;
   }
   await handle.close();
+  await protectWindowsHandoffFile(path);
   return path;
+}
+
+async function protectWindowsHandoffFile(path: string): Promise<void> {
+  if (process.platform !== "win32") return;
+  const { stdout } = await execFileAsync("whoami", [], { windowsHide: true });
+  const identity = stdout.trim();
+  if (!identity) {
+    throw new ConfigurationError("Unable to determine current Windows identity", "handoff_acl_failed");
+  }
+  try {
+    await execFileAsync("icacls", [path, "/inheritance:r", "/grant:r", `${identity}:(F)`], { windowsHide: true });
+  } catch (error) {
+    await rm(path, { force: true });
+    throw new ConfigurationError("Unable to restrict private handoff ACL", "handoff_acl_failed");
+  }
+}
+
+function isForbiddenSecretArgument(argument: string): boolean {
+  const equalsIndex = argument.indexOf("=");
+  if (equalsIndex < 0) return false;
+  const switchName = argument.slice(0, equalsIndex).toLowerCase();
+  return switchName.includes("license") || switchName.includes("runtime");
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((accept) => setTimeout(accept, milliseconds));
+}
+
+async function nativeReadyObserved(path: string, nonce: string): Promise<boolean> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return false;
+    throw error;
+  }
+  if (!text.trim()) return false;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ConfigurationError("Native-ready marker is invalid", "native_ready_invalid");
+  }
+  const marker = value as Record<string, unknown>;
+  if (marker.schemaVersion !== 1 ||
+      marker.kind !== "slybrowser.native-ready" ||
+      marker.ready !== true ||
+      marker.nonce !== nonce) {
+    throw new ConfigurationError("Native-ready marker is invalid", "native_ready_invalid");
+  }
+  return true;
+}
+
+async function waitForNativeReadyFile(
+  path: string | undefined,
+  nonce: string | undefined,
+  timeout = 15_000,
+): Promise<void> {
+  if (path === undefined || nonce === undefined) return;
+  if (!Number.isFinite(timeout) || timeout < 1) {
+    throw new ConfigurationError("nativeReadyTimeout must be a positive number of milliseconds", "config_invalid");
+  }
+  const deadline = Date.now() + timeout;
+  do {
+    if (await nativeReadyObserved(path, nonce)) return;
+    await delay(Math.min(50, Math.max(1, deadline - Date.now())));
+  } while (Date.now() < deadline);
+  throw new ConfigurationError("SlyBrowser did not report native-ready before returning", "native_ready_timeout");
 }
 
 export async function prepareLaunch(
@@ -161,6 +246,13 @@ export async function prepareLaunch(
     tempRoot?: string | undefined;
     extraArguments?: readonly string[] | undefined;
     includeDriverLease?: boolean | undefined;
+    runtimeHandoff?: Record<string, unknown> | undefined;
+    driverRuntimeHandoff?: Record<string, unknown> | undefined;
+    includeDriverRuntime?: boolean | undefined;
+    allowRuntimeActivationTicket?: boolean | undefined;
+    releaseRoot?: string | undefined;
+    humanizeControl?: Record<string, unknown> | undefined;
+    nativeReady?: boolean | undefined;
   } = {},
 ): Promise<LaunchPlan> {
   const executablePath = resolve(executable);
@@ -171,17 +263,35 @@ export async function prepareLaunch(
     throw new ConfigurationError("Browser executable does not exist", "browser_missing");
   }
   const extraArguments = [...(settings.extraArguments ?? [])];
-  if (extraArguments.some((argument) => /license[^=]*=/i.test(argument))) {
+  const releaseRoot = settings.releaseRoot === undefined ? undefined : resolve(settings.releaseRoot);
+  if (extraArguments.some(isForbiddenSecretArgument)) {
     throw new ConfigurationError(
-      "License material must not be passed in extra browser arguments",
+      "License and runtime material must not be passed in extra browser arguments",
       "license_argument_forbidden",
     );
   }
-  if (Object.prototype.hasOwnProperty.call(options, "licenseKey")) {
+  if (["licenseKey", "runtimeToken", "bootstrapToken", "activationTicket", "downloadTicket"].some((name) =>
+      Object.prototype.hasOwnProperty.call(options, name))) {
     throw new ConfigurationError(
-      "A long-lived license key must never be placed in the browser profile handoff",
+      "License and runtime secrets must never be placed in the browser profile handoff",
       "profile_secret_forbidden",
     );
+  }
+  const forbiddenRuntimeHandoffSecrets = [
+    "licenseKey",
+    "runtimeToken",
+    ...(settings.allowRuntimeActivationTicket === true ? [] : ["activationTicket"]),
+    "downloadTicket",
+  ];
+  for (const runtimeHandoff of [settings.runtimeHandoff, settings.driverRuntimeHandoff]) {
+    if (runtimeHandoff !== undefined &&
+        forbiddenRuntimeHandoffSecrets.some((name) =>
+          Object.prototype.hasOwnProperty.call(runtimeHandoff, name))) {
+      throw new ConfigurationError(
+        "Runtime handoff must not contain long-lived keys, runtime tokens or download tickets",
+        "runtime_handoff_secret_forbidden",
+      );
+    }
   }
   const root = resolve(settings.tempRoot ?? tmpdir());
   await mkdir(root, { recursive: true });
@@ -199,12 +309,55 @@ export async function prepareLaunch(
   const configFile = await privateFile(root, "sly-config-", configBytes);
   let licenseFile: string | undefined;
   let driverLicenseFile: string | undefined;
+  let runtimeFile: string | undefined;
+  let driverRuntimeFile: string | undefined;
+  let humanizeConfigFile: string | undefined;
+  let nativeReadyRequestFile: string | undefined;
+  let nativeReadyFile: string | undefined;
+  let nativeReadyNonce: string | undefined;
   try {
     licenseFile = await privateFile(root, "sly-license-", leaseBytes);
     if (settings.includeDriverLease) {
       driverLicenseFile = await privateFile(root, "sly-driver-license-", leaseBytes);
     }
+    if (settings.runtimeHandoff !== undefined) {
+      const runtimeBytes = Buffer.from(JSON.stringify(settings.runtimeHandoff), "utf8");
+      if (runtimeBytes.length === 0 || runtimeBytes.length > 64 * 1024) {
+        throw new ConfigurationError("Runtime handoff file is missing or too large", "runtime_handoff_invalid");
+      }
+      runtimeFile = await privateFile(root, "sly-runtime-", runtimeBytes);
+    }
+    const driverRuntimeHandoff = settings.driverRuntimeHandoff ?? (settings.includeDriverRuntime ? settings.runtimeHandoff : undefined);
+    if (driverRuntimeHandoff !== undefined) {
+      const driverRuntimeBytes = Buffer.from(JSON.stringify(driverRuntimeHandoff), "utf8");
+      if (driverRuntimeBytes.length === 0 || driverRuntimeBytes.length > 64 * 1024) {
+        throw new ConfigurationError("Runtime handoff file is missing or too large", "runtime_handoff_invalid");
+      }
+      driverRuntimeFile = await privateFile(root, "sly-driver-runtime-", driverRuntimeBytes);
+    }
+    if (settings.humanizeControl !== undefined) {
+      const humanizeBytes = Buffer.from(JSON.stringify(settings.humanizeControl), "utf8");
+      if (humanizeBytes.length > 64 * 1024) {
+        throw new ConfigurationError("Native Humanize control file is too large", "humanize_config_too_large");
+      }
+      humanizeConfigFile = await privateFile(root, "sly-humanize-", humanizeBytes);
+    }
+    if (settings.nativeReady === true) {
+      nativeReadyNonce = randomUUID();
+      nativeReadyFile = await privateFile(root, "sly-native-ready-", Buffer.alloc(0));
+      nativeReadyRequestFile = await privateFile(root, "sly-native-ready-request-", Buffer.from(JSON.stringify({
+        schemaVersion: 1,
+        kind: "slybrowser.native-ready-request",
+        readyFile: nativeReadyFile,
+        nonce: nativeReadyNonce,
+      }), "utf8"));
+    }
   } catch (error) {
+    if (nativeReadyRequestFile) await rm(nativeReadyRequestFile, { force: true });
+    if (nativeReadyFile) await rm(nativeReadyFile, { force: true });
+    if (humanizeConfigFile) await rm(humanizeConfigFile, { force: true });
+    if (driverRuntimeFile) await rm(driverRuntimeFile, { force: true });
+    if (runtimeFile) await rm(runtimeFile, { force: true });
     if (driverLicenseFile) await rm(driverLicenseFile, { force: true });
     if (licenseFile) await rm(licenseFile, { force: true });
     await rm(configFile, { force: true });
@@ -214,10 +367,28 @@ export async function prepareLaunch(
   let cleaned = false;
   return {
     executable: executablePath,
-    arguments: [`--sly-config-file=${configFile}`, `--sly-license-file=${licenseFile}`, ...extraArguments],
+    arguments: [
+      `--sly-config-file=${configFile}`,
+      `--sly-license-file=${licenseFile}`,
+      ...(releaseRoot === undefined ? [] : [`--sly-release-root=${releaseRoot}`]),
+      ...(runtimeFile === undefined ? [] : [`--sly-runtime-file=${runtimeFile}`]),
+      ...(humanizeConfigFile === undefined ? [] : [`--sly-humanize-config=${humanizeConfigFile}`]),
+      ...(nativeReadyRequestFile === undefined ? [] : [`--sly-native-ready-request-file=${nativeReadyRequestFile}`]),
+      ...extraArguments,
+    ],
     configFile,
     licenseFile,
+    ...(releaseRoot === undefined ? {} : { releaseRoot }),
     ...(driverLicenseFile === undefined ? {} : { driverLicenseFile }),
+    ...(runtimeFile === undefined ? {} : { runtimeFile }),
+    ...(driverRuntimeFile === undefined ? {} : { driverRuntimeFile }),
+    ...(humanizeConfigFile === undefined ? {} : { humanizeConfigFile }),
+    ...(nativeReadyRequestFile === undefined ? {} : { nativeReadyRequestFile }),
+    ...(nativeReadyFile === undefined ? {} : { nativeReadyFile }),
+    ...(nativeReadyNonce === undefined ? {} : { nativeReadyNonce }),
+    async waitForNativeReady(timeout = 15_000) {
+      await waitForNativeReadyFile(nativeReadyFile, nativeReadyNonce, timeout);
+    },
     async cleanup() {
       if (cleaned) return;
       cleaned = true;
@@ -225,6 +396,11 @@ export async function prepareLaunch(
         rm(licenseFile, { force: true }),
         rm(configFile, { force: true }),
         ...(driverLicenseFile === undefined ? [] : [rm(driverLicenseFile, { force: true })]),
+        ...(runtimeFile === undefined ? [] : [rm(runtimeFile, { force: true })]),
+        ...(driverRuntimeFile === undefined ? [] : [rm(driverRuntimeFile, { force: true })]),
+        ...(humanizeConfigFile === undefined ? [] : [rm(humanizeConfigFile, { force: true })]),
+        ...(nativeReadyRequestFile === undefined ? [] : [rm(nativeReadyRequestFile, { force: true })]),
+        ...(nativeReadyFile === undefined ? [] : [rm(nativeReadyFile, { force: true })]),
       ]);
     },
   };

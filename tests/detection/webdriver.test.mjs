@@ -106,15 +106,15 @@ test("Humanize typing uses WebDriver focus without a redundant element click", a
 
 test("browser and project WebDriver must report the same major version", () => {
   assert.deepEqual(validateDriverCompatibility({
-    browserVersion: "148.0.7778.179",
-    chrome: { chromedriverVersion: "148.0.7778.179 (abcdef)" },
+    browserVersion: "123.0.4567.89",
+    chrome: { chromedriverVersion: "123.0.4567.89 (abcdef)" },
   }), {
-    browserVersion: "148.0.7778.179",
-    driverVersion: "148.0.7778.179",
-    browserMajor: 148,
+    browserVersion: "123.0.4567.89",
+    driverVersion: "123.0.4567.89",
+    browserMajor: 123,
   });
   assert.throws(() => validateDriverCompatibility({
-    browserVersion: "148.0.7778.179",
+    browserVersion: "123.0.4567.89",
     chrome: { chromedriverVersion: "149.0.1.0" },
   }), /different major versions/);
 });
@@ -149,7 +149,7 @@ test("WebDriver adapters score core, BrowserScan, and device flags", () => {
     webdriver: false,
     pluginsLength: 5,
     windowChromeType: "object",
-    userAgent: "Mozilla/5.0 Chrome/148.0.0.0 Safari/537.36",
+    userAgent: "Mozilla/5.0 Chrome/123.0.0.0 Safari/537.36",
     cdpGlobals: [],
   });
   assert.equal(core.status, "PASS");

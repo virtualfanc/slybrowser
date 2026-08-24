@@ -4,11 +4,12 @@
   "title": "SlyBrowser signed release manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "browserVersion", "sdkCompatibility", "artifacts", "evidence", "signature"],
+  "required": ["schemaVersion", "browserVersion", "sdkCompatibility", "status", "artifacts", "signature"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "browserVersion": { "type": "string", "minLength": 1 },
     "sdkCompatibility": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["available", "revoked"] },
     "publishedAt": { "type": "string", "format": "date-time" },
     "artifacts": {
       "type": "array",
@@ -18,7 +19,8 @@
         "additionalProperties": false,
         "required": [
           "platform", "arch", "url", "sha256", "size", "archiveFormat",
-          "browserExecutable", "driverExecutable", "browserSha256", "driverSha256"
+          "browserExecutable", "driverExecutable", "browserSha256", "driverSha256",
+          "privateModules", "resources"
         ],
         "properties": {
           "platform": { "enum": ["windows", "linux", "macos"] },
@@ -40,7 +42,18 @@
             "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
           },
           "browserSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "driverSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          "driverSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "privateModules": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/privateModule" }
+          },
+          "resources": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/resourceFile" }
+          },
+          "codeSignature": { "$ref": "#/$defs/codeSignature" }
         }
       }
     },
@@ -76,6 +89,44 @@
     }
   },
   "$defs": {
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+    },
+    "privateModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size", "abi"],
+      "properties": {
+        "path": { "$ref": "#/$defs/safeRelativePath" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size": { "type": "integer", "minimum": 1 },
+        "abi": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "resourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": { "$ref": "#/$defs/safeRelativePath" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "codeSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "subject", "certificateSha256", "timestampRequired"],
+      "properties": {
+        "scheme": { "enum": ["authenticode", "apple-developer-id", "x509-code-signing"] },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "certificateSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "timestampRequired": { "type": "boolean" }
+      }
+    },
     "evidenceArtifact": {
       "type": "object",
       "additionalProperties": false,

@@ -11,6 +11,7 @@ from slybrowser.webdriver import (
     SlyWebDriverSession,
     build_webdriver_session_payload,
     default_driver_executable,
+    derive_release_root,
     describe_default_driver,
     resolve_humanize_config,
     validate_webdriver_capabilities,
@@ -63,6 +64,13 @@ class DefaultWebDriverTests(unittest.TestCase):
                 self.assertEqual(default_driver_executable(browser, explicit), explicit.resolve())
                 self.assertEqual(describe_default_driver(browser)["backend"], "project-webdriver")
 
+    def test_derives_release_root_from_signed_artifact_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            browser = root / "SlyBrowser" / "SlyBrowser.exe"
+            self.assertEqual(derive_release_root(browser, "SlyBrowser/SlyBrowser.exe"), root)
+            self.assertIsNone(derive_release_root(browser, "OtherBrowser/SlyBrowser.exe"))
+
     def test_session_payload_uses_exact_browser_and_secure_handoff(self) -> None:
         payload = build_webdriver_session_payload(
             "D:/build/SlyBrowser.exe",
@@ -106,13 +114,13 @@ class DefaultWebDriverTests(unittest.TestCase):
 
     def test_version_match_is_mandatory(self) -> None:
         versions = validate_webdriver_capabilities({
-            "browserVersion": "148.0.7778.179",
-            "chrome": {"chromedriverVersion": "148.0.7778.179 (abcdef)"},
+            "browserVersion": "123.0.4567.89",
+            "chrome": {"chromedriverVersion": "123.0.4567.89 (abcdef)"},
         })
-        self.assertEqual(versions.browser_major, 148)
+        self.assertEqual(versions.browser_major, 123)
         with self.assertRaisesRegex(WebDriverError, "different major versions"):
             validate_webdriver_capabilities({
-                "browserVersion": "148.0.7778.179",
+                "browserVersion": "123.0.4567.89",
                 "chrome": {"chromedriverVersion": "149.0.1.0"},
             })
 
@@ -131,15 +139,15 @@ class DefaultWebDriverTests(unittest.TestCase):
 
         discovery = fetch_cdp_discovery(
             capabilities,
-            opener=lambda _url: Response(b'{"Browser":"SlyBrowser/148"}'),
+            opener=lambda _url: Response(b'{"Browser":"SlyBrowser/123"}'),
         )
-        self.assertEqual(discovery["Browser"], "SlyBrowser/148")
+        self.assertEqual(discovery["Browser"], "SlyBrowser/123")
         with self.assertRaisesRegex(WebDriverError, "loopback"):
             cdp_debugger_address({"goog:chromeOptions": {"debuggerAddress": "192.0.2.10:9222"}})
 
     def test_mobile_persona_is_one_chromedriver_emulation_contract(self) -> None:
         persona = {
-            "userAgent": "Mozilla/5.0 Mobile SlyBrowser/148",
+            "userAgent": "Mozilla/5.0 Mobile SlyBrowser/123",
             "deviceMetrics": {"width": 390, "height": 844, "pixelRatio": 3, "mobile": True, "touch": True},
             "clientHints": {"platform": "Android", "mobile": True, "platformVersion": "15.0.0"},
         }
@@ -154,8 +162,8 @@ class DefaultWebDriverTests(unittest.TestCase):
             service,  # type: ignore[arg-type]
             "session-id",
             {
-                "browserVersion": "148.0.7778.179",
-                "chrome": {"chromedriverVersion": "148.0.7778.179 (abcdef)"},
+                "browserVersion": "123.0.4567.89",
+                "chrome": {"chromedriverVersion": "123.0.4567.89 (abcdef)"},
             },
             "SlyBrowser.exe",
         )
@@ -173,7 +181,7 @@ class DefaultWebDriverTests(unittest.TestCase):
         session = SlyWebDriverSession(
             service,  # type: ignore[arg-type]
             "session-id",
-            {"browserVersion": "148.0.7778.179", "chrome": {"chromedriverVersion": "148.0.7778.179"}},
+            {"browserVersion": "123.0.4567.89", "chrome": {"chromedriverVersion": "123.0.4567.89"}},
             "SlyBrowser.exe",
         )
         self.assertEqual(session.new_window(), {"handle": "tab-2", "type": "tab"})
@@ -193,7 +201,7 @@ class DefaultWebDriverTests(unittest.TestCase):
         session = SlyWebDriverSession(
             service,  # type: ignore[arg-type]
             "session-id",
-            {"browserVersion": "148.0.7778.179", "chrome": {"chromedriverVersion": "148.0.7778.179"}},
+            {"browserVersion": "123.0.4567.89", "chrome": {"chromedriverVersion": "123.0.4567.89"}},
             "SlyBrowser.exe",
         )
         self.assertEqual(session.execute_async_script("arguments[arguments.length - 1]('ok')"), "async-result")
@@ -216,8 +224,8 @@ class DefaultWebDriverTests(unittest.TestCase):
             service,  # type: ignore[arg-type]
             "session-id",
             {
-                "browserVersion": "148.0.7778.179",
-                "chrome": {"chromedriverVersion": "148.0.7778.179 (abcdef)"},
+                "browserVersion": "123.0.4567.89",
+                "chrome": {"chromedriverVersion": "123.0.4567.89 (abcdef)"},
                 "sly:features": {
                     "humanize": {"enabled": True, "version": 1, "preset": "careful"}
                 },
@@ -234,7 +242,7 @@ class DefaultWebDriverTests(unittest.TestCase):
                 "thinkDelayMin": 0,
                 "thinkDelayMax": 0,
             },
-            human_seed=148,
+            human_seed=123,
         )
 
         session.click_element("button-id")
@@ -254,8 +262,8 @@ class DefaultWebDriverTests(unittest.TestCase):
                 _RecordingService(),  # type: ignore[arg-type]
                 "session-id",
                 {
-                    "browserVersion": "148.0.7778.179",
-                    "chrome": {"chromedriverVersion": "148.0.7778.179 (abcdef)"},
+                    "browserVersion": "123.0.4567.89",
+                    "chrome": {"chromedriverVersion": "123.0.4567.89 (abcdef)"},
                 },
                 "D:/build/SlyBrowser.exe",
                 humanize=True,

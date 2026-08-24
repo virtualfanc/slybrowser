@@ -14,7 +14,7 @@ async function upstream(): Promise<{ capabilities: Record<string, unknown>; endp
   const server = createServer((request, response) => {
     if (request.url === "/json/version") {
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ Browser: "SlyBrowser/148", webSocketDebuggerUrl: origin.replace("http:", "ws:") + "/devtools/browser/test" }));
+      response.end(JSON.stringify({ Browser: "SlyBrowser/123", webSocketDebuggerUrl: origin.replace("http:", "ws:") + "/devtools/browser/test" }));
       return;
     }
     response.statusCode = 404;
@@ -38,7 +38,7 @@ describe("standard CDP discovery", () => {
   it("uses the project WebDriver debugger address and rejects non-loopback endpoints", async () => {
     const context = await upstream();
     expect(cdpDebuggerAddress(context.capabilities)).toMatch(/^127\.0\.0\.1:/);
-    await expect(fetchCdpDiscovery(context.capabilities)).resolves.toMatchObject({ Browser: "SlyBrowser/148" });
+    await expect(fetchCdpDiscovery(context.capabilities)).resolves.toMatchObject({ Browser: "SlyBrowser/123" });
     expect(() => cdpDebuggerAddress({ "goog:chromeOptions": { debuggerAddress: "192.0.2.10:9222" } }))
       .toThrowError(expect.objectContaining({ code: "cdp_address_unsafe" }));
   });

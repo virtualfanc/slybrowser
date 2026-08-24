@@ -9,11 +9,11 @@
     "bypass": "localhost,127.0.0.1"
   },
   "profile": {
-    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-    "userAgentFullVersion": "148.0.7778.179",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "userAgentFullVersion": "123.0.4567.89",
     "clientHints": [
-      { "brand": "Chromium", "version": "148" },
-      { "brand": "Google Chrome", "version": "148" },
+      { "brand": "Chromium", "version": "123" },
+      { "brand": "Google Chrome", "version": "123" },
       { "brand": "Not_A Brand", "version": "99" }
     ],
     "osVersion": "10.0.0",

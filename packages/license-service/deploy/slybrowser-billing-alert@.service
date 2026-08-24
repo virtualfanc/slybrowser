@@ -1,0 +1,15 @@
+[Unit]
+Description=SlyBrowser billing worker failure alert for %i
+Documentation=file:/opt/slybrowser-billing/current/packages/license-service/README.md
+
+[Service]
+Type=oneshot
+User=slybrowser
+Group=slybrowser
+EnvironmentFile=/etc/slybrowser/billing.env
+ExecStart=/bin/sh /opt/slybrowser-billing/current/packages/license-service/deploy/systemd-failure-alert.sh %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+WorkingDirectory=/opt/slybrowser-billing/current

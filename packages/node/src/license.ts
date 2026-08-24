@@ -8,18 +8,62 @@ const MAX_PAYLOAD_BYTES = 32 * 1024;
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 export interface LicenseClaims {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   licenseId: string;
   audience: string;
   issuedAt: number;
   notBefore: number;
   expiresAt: number;
+  browserVersion?: string;
   browserMin: string;
   browserMax: string;
+  planId?: string;
+  concurrencyLimit?: number;
+  paidThrough?: number | null;
+  licenseStatus?: "active" | "hold" | "revoked";
+  artifactSha256?: string;
+  browserSha256?: string;
+  driverSha256?: string;
+  artifact?: LicenseArtifactClaims;
+  leaseGeneration?: number;
   features: string[];
   sessionId: string;
   nonce: string;
   deviceHash?: string;
+}
+
+export interface LicensePrivateModuleClaims {
+  path: string;
+  sha256: string;
+  size: number;
+  abi: string;
+}
+
+export interface LicenseResourceClaims {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface LicenseCodeSignatureClaims {
+  scheme: "authenticode" | "apple-developer-id" | "x509-code-signing";
+  subject: string;
+  certificateSha256: string;
+  timestampRequired: boolean;
+}
+
+export interface LicenseArtifactClaims {
+  sha256: string;
+  platform: "windows" | "linux" | "macos";
+  arch: "x64" | "arm64";
+  archiveFormat: "zip";
+  browserExecutable: string;
+  driverExecutable: string;
+  browserSha256: string;
+  driverSha256: string;
+  privateModules: LicensePrivateModuleClaims[];
+  resources: LicenseResourceClaims[];
+  codeSignature?: LicenseCodeSignatureClaims;
 }
 
 export interface LicenseEnvelope {
@@ -66,6 +110,95 @@ function compareVersions(left: number[], right: number[]): number {
     if (difference !== 0) return Math.sign(difference);
   }
   return 0;
+}
+
+function isSha256(value: string): boolean {
+  return /^[a-f0-9]{64}$/.test(value);
+}
+
+function optionalArtifactClaims(document: Record<string, unknown>, schemaVersion: 1 | 2): LicenseArtifactClaims | undefined {
+  const value = document.artifact;
+  if (value === undefined) {
+    if (schemaVersion === 2) fail("license_invalid_claims", "Claim artifact is invalid");
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail("license_invalid_claims", "Claim artifact is invalid");
+  }
+  const artifact = value as Record<string, unknown>;
+  const platform = requiredString(artifact, "platform") as LicenseArtifactClaims["platform"];
+  const arch = requiredString(artifact, "arch") as LicenseArtifactClaims["arch"];
+  const archiveFormat = requiredString(artifact, "archiveFormat") as LicenseArtifactClaims["archiveFormat"];
+  if (!["windows", "linux", "macos"].includes(platform) ||
+      !["x64", "arm64"].includes(arch) ||
+      archiveFormat !== "zip") {
+    fail("license_invalid_claims", "Claim artifact is invalid");
+  }
+  const modules = artifact.privateModules;
+  const resources = artifact.resources;
+  if (!Array.isArray(modules) || !Array.isArray(resources)) {
+    fail("license_invalid_claims", "Claim artifact is invalid");
+  }
+  const privateModules = modules.map((module) => {
+    if (!module || typeof module !== "object" || Array.isArray(module)) fail("license_invalid_claims", "Claim artifact is invalid");
+    const item = module as Record<string, unknown>;
+    const path = requiredString(item, "path");
+    const sha256 = requiredString(item, "sha256");
+    const size = requiredInteger(item, "size");
+    const abi = requiredString(item, "abi");
+    if (!isSha256(sha256) || size < 0) fail("license_invalid_claims", "Claim artifact is invalid");
+    return { path, sha256, size, abi };
+  });
+  const resourceClaims = resources.map((resource) => {
+    if (!resource || typeof resource !== "object" || Array.isArray(resource)) fail("license_invalid_claims", "Claim artifact is invalid");
+    const item = resource as Record<string, unknown>;
+    const path = requiredString(item, "path");
+    const sha256 = requiredString(item, "sha256");
+    const size = requiredInteger(item, "size");
+    if (!isSha256(sha256) || size < 0) fail("license_invalid_claims", "Claim artifact is invalid");
+    return { path, sha256, size };
+  });
+  let codeSignature: LicenseCodeSignatureClaims | undefined;
+  if (Object.hasOwn(artifact, "codeSignature")) {
+    const signature = artifact.codeSignature;
+    if (!signature || typeof signature !== "object" || Array.isArray(signature)) {
+      fail("license_invalid_claims", "Claim artifact is invalid");
+    }
+    const signatureDocument = signature as Record<string, unknown>;
+    const scheme = requiredString(signatureDocument, "scheme") as LicenseCodeSignatureClaims["scheme"];
+    const certificateSha256 = requiredString(signatureDocument, "certificateSha256");
+    const timestampRequired = signatureDocument.timestampRequired;
+    if (!["authenticode", "apple-developer-id", "x509-code-signing"].includes(scheme) ||
+        !isSha256(certificateSha256) ||
+        typeof timestampRequired !== "boolean") {
+      fail("license_invalid_claims", "Claim artifact is invalid");
+    }
+    codeSignature = {
+      scheme,
+      subject: requiredString(signatureDocument, "subject"),
+      certificateSha256,
+      timestampRequired,
+    };
+  }
+  const sha256 = requiredString(artifact, "sha256");
+  const browserSha256 = requiredString(artifact, "browserSha256");
+  const driverSha256 = requiredString(artifact, "driverSha256");
+  if (!isSha256(sha256) || !isSha256(browserSha256) || !isSha256(driverSha256)) {
+    fail("license_invalid_claims", "Claim artifact is invalid");
+  }
+  return {
+    sha256,
+    platform,
+    arch,
+    archiveFormat,
+    browserExecutable: requiredString(artifact, "browserExecutable"),
+    driverExecutable: requiredString(artifact, "driverExecutable"),
+    browserSha256,
+    driverSha256,
+    privateModules,
+    resources: resourceClaims,
+    ...(codeSignature === undefined ? {} : { codeSignature }),
+  };
 }
 
 function parseEnvelope(value: string | Buffer | LicenseEnvelope): Record<string, unknown> {
@@ -144,7 +277,8 @@ export class LicenseVerifier {
   }
 
   #validateClaims(document: Record<string, unknown>, options: LicenseVerificationOptions): LicenseClaims {
-    if (requiredInteger(document, "schemaVersion") !== 1) {
+    const schemaVersion = requiredInteger(document, "schemaVersion");
+    if (schemaVersion !== 1 && schemaVersion !== 2) {
       fail("license_schema_unsupported", "License schema is not supported");
     }
     const audience = requiredString(document, "audience");
@@ -169,11 +303,62 @@ export class LicenseVerifier {
     const browserMin = requiredString(document, "browserMin");
     const browserMax = requiredString(document, "browserMax");
     const browserVersion = parseVersion(options.browserVersion);
+    const claimBrowserVersion = document.browserVersion === undefined ? undefined : requiredString(document, "browserVersion");
+    if (schemaVersion === 2 && claimBrowserVersion !== options.browserVersion) {
+      fail("license_browser_unsupported", "Browser version is outside the license range");
+    }
     if (
       compareVersions(parseVersion(browserMin), browserVersion) > 0 ||
       compareVersions(browserVersion, parseVersion(browserMax)) > 0
     ) {
       fail("license_browser_unsupported", "Browser version is outside the license range");
+    }
+
+    const planIdValue = document.planId;
+    const planId = planIdValue === undefined ? undefined : requiredString(document, "planId");
+    const concurrencyValue = document.concurrencyLimit;
+    const concurrencyLimit = concurrencyValue === undefined ? undefined : requiredInteger(document, "concurrencyLimit");
+    if (concurrencyLimit !== undefined && concurrencyLimit < 1) {
+      fail("license_invalid_claims", "Claim concurrencyLimit is invalid");
+    }
+    const paidThroughValue = document.paidThrough;
+    const paidThrough = paidThroughValue === undefined || paidThroughValue === null
+      ? paidThroughValue as undefined | null
+      : requiredInteger(document, "paidThrough");
+    if (paidThrough !== undefined && paidThrough !== null && paidThrough < 0) {
+      fail("license_invalid_claims", "Claim paidThrough is invalid");
+    }
+    const licenseStatusValue = document.licenseStatus;
+    const licenseStatus = licenseStatusValue === undefined
+      ? undefined
+      : requiredString(document, "licenseStatus") as LicenseClaims["licenseStatus"];
+    if (licenseStatus !== undefined && !["active", "hold", "revoked"].includes(licenseStatus)) {
+      fail("license_invalid_claims", "Claim licenseStatus is invalid");
+    }
+    const artifactSha256Value = document.artifactSha256;
+    const artifactSha256 = artifactSha256Value === undefined ? undefined : requiredString(document, "artifactSha256");
+    if (artifactSha256 !== undefined && !isSha256(artifactSha256)) {
+      fail("license_invalid_claims", "Claim artifactSha256 is invalid");
+    }
+    const browserSha256Value = document.browserSha256;
+    const browserSha256 = browserSha256Value === undefined ? undefined : requiredString(document, "browserSha256");
+    if (browserSha256 !== undefined && !isSha256(browserSha256)) {
+      fail("license_invalid_claims", "Claim browserSha256 is invalid");
+    }
+    const driverSha256Value = document.driverSha256;
+    const driverSha256 = driverSha256Value === undefined ? undefined : requiredString(document, "driverSha256");
+    if (driverSha256 !== undefined && !isSha256(driverSha256)) {
+      fail("license_invalid_claims", "Claim driverSha256 is invalid");
+    }
+    const leaseGenerationValue = document.leaseGeneration;
+    const leaseGeneration = leaseGenerationValue === undefined ? undefined : requiredInteger(document, "leaseGeneration");
+    if (leaseGeneration !== undefined && leaseGeneration < 1) {
+      fail("license_invalid_claims", "Claim leaseGeneration is invalid");
+    }
+    const artifact = optionalArtifactClaims(document, schemaVersion);
+    if (artifact !== undefined &&
+        (artifact.sha256 !== artifactSha256 || artifact.browserSha256 !== browserSha256 || artifact.driverSha256 !== driverSha256)) {
+      fail("license_invalid_claims", "Claim artifact does not match flat hashes");
     }
 
     const features = document.features;
@@ -196,14 +381,24 @@ export class LicenseVerifier {
     }
 
     const claims: LicenseClaims = {
-      schemaVersion: 1,
+      schemaVersion,
       licenseId: requiredString(document, "licenseId"),
       audience,
       issuedAt,
       notBefore,
       expiresAt,
+      ...(claimBrowserVersion === undefined ? {} : { browserVersion: claimBrowserVersion }),
       browserMin,
       browserMax,
+      ...(planId === undefined ? {} : { planId }),
+      ...(concurrencyLimit === undefined ? {} : { concurrencyLimit }),
+      ...(paidThrough === undefined ? {} : { paidThrough }),
+      ...(licenseStatus === undefined ? {} : { licenseStatus }),
+      ...(artifactSha256 === undefined ? {} : { artifactSha256 }),
+      ...(browserSha256 === undefined ? {} : { browserSha256 }),
+      ...(driverSha256 === undefined ? {} : { driverSha256 }),
+      ...(artifact === undefined ? {} : { artifact }),
+      ...(leaseGeneration === undefined ? {} : { leaseGeneration }),
       features: features as string[],
       sessionId: requiredString(document, "sessionId"),
       nonce: requiredString(document, "nonce"),

@@ -34,8 +34,19 @@ function tlsFingerprint(run) {
 
 export function compareRuns(runs) {
   const warnings = [];
-  const majors = new Set(runs.map((run) => major(run.browser.browserVersion)).filter((value) => value !== null));
-  if (majors.size > 1) warnings.push("Browser major versions differ; TLS and JavaScript fingerprint comparisons are not like-for-like.");
+  const majorEntries = runs.map((run) => ({
+    browserId: run.browser.id,
+    browserVersion: run.browser.browserVersion ?? null,
+    major: major(run.browser.browserVersion),
+  }));
+  const missingMajors = majorEntries.filter((entry) => entry.major === null);
+  const majors = new Set(majorEntries.map((entry) => entry.major).filter((value) => value !== null));
+  const scoreComparisonsAllowed = missingMajors.length === 0 && majors.size === 1;
+  if (missingMajors.length > 0) {
+    warnings.push(`Browser major version is missing for ${missingMajors.map((entry) => entry.browserId).join(", ")}; score differences are evidence-only.`);
+  }
+  if (majors.size > 1) warnings.push("Browser major versions differ; TLS, JavaScript fingerprint, and score comparisons are not like-for-like.");
+  if (!scoreComparisonsAllowed) warnings.push("Numeric score differences are suppressed until every run uses the same browser major.");
   if (runs.some((run) => run.summary.qualification !== "qualified")) {
     warnings.push("At least one run has less than 80% required coverage; its score is provisional.");
   }
@@ -52,11 +63,30 @@ export function compareRuns(runs) {
     const comparable = baselineTls && current && major(run.browser.browserVersion) === major(baseline.browser.browserVersion);
     return [run.browser.id, comparable ? JSON.stringify(current) === JSON.stringify(baselineTls) : null];
   }));
-  return { runs, rows, warnings, baseline: baseline.browser.id, tlsParity };
+  const scoreDeltas = scoreComparisonsAllowed ? Object.fromEntries(runs.map((run) => [
+    run.browser.id,
+    {
+      adjusted: Number((run.summary.score - baseline.summary.score).toFixed(2)),
+      raw: Number((run.summary.rawScore - baseline.summary.rawScore).toFixed(2)),
+    },
+  ])) : null;
+  return {
+    runs,
+    rows,
+    warnings,
+    baseline: baseline.browser.id,
+    tlsParity,
+    comparisonMode: scoreComparisonsAllowed ? "same-major" : "evidence-only",
+    scoreComparisonsAllowed,
+    browserMajors: majorEntries,
+    scoreDeltas,
+  };
 }
 
 export function renderMarkdown(comparison) {
-  const { runs, rows, warnings, baseline, tlsParity } = comparison;
+  const { runs, rows, warnings, baseline, tlsParity, scoreComparisonsAllowed } = comparison;
+  const scoreLabel = scoreComparisonsAllowed ? "Adjusted score" : "Adjusted score (evidence only; not comparable)";
+  const rawScoreLabel = scoreComparisonsAllowed ? "Raw score" : "Raw score (evidence only; not comparable)";
   const lines = [
     "# Detection benchmark comparison",
     "",
@@ -67,8 +97,8 @@ export function renderMarkdown(comparison) {
   lines.push(
     `| Metric | ${runs.map((run) => run.browser.name).join(" | ")} |`,
     `| --- | ${runs.map(() => "---:").join(" | ")} |`,
-    `| Adjusted score | ${runs.map((run) => run.summary.score.toFixed(2)).join(" | ")} |`,
-    `| Raw score | ${runs.map((run) => run.summary.rawScore.toFixed(2)).join(" | ")} |`,
+    `| ${scoreLabel} | ${runs.map((run) => run.summary.score.toFixed(2)).join(" | ")} |`,
+    `| ${rawScoreLabel} | ${runs.map((run) => run.summary.rawScore.toFixed(2)).join(" | ")} |`,
     `| Coverage | ${runs.map((run) => `${run.summary.coverage.toFixed(2)}%`).join(" | ")} |`,
     `| Qualification | ${runs.map((run) => run.summary.qualification).join(" | ")} |`,
     `| TLS parity with baseline | ${runs.map((run) => tlsParity[run.browser.id] === null ? "N/A" : tlsParity[run.browser.id] ? "MATCH" : "DIFF").join(" | ")} |`,

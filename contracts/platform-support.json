@@ -1,21 +1,36 @@
 {
   "schemaVersion": 1,
-  "lastVerified": "2026-08-16",
+  "lastVerified": "2026-08-24",
   "browserRuntime": {
     "supported": [
       {
         "platform": "windows",
         "arch": "x64",
-        "browserVersion": "148.0.7778.179",
-        "modes": ["headed", "headless", "project-webdriver", "persistent-profile"]
+        "releaseChannel": "stable",
+        "modes": ["headed", "headless", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "linux",
+        "arch": "x64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "headless", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "macos",
+        "arch": "x64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "macos",
+        "arch": "arm64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
       }
     ],
     "unsupported": [
       { "platform": "windows", "arch": "arm64", "reason": "No signed browser artifact is published." },
-      { "platform": "linux", "arch": "x64", "reason": "SDK-only validation; browser artifact is not yet a declared target." },
-      { "platform": "linux", "arch": "arm64", "reason": "No signed browser artifact is published." },
-      { "platform": "macos", "arch": "x64", "reason": "SDK-only validation; browser artifact is not yet a declared target." },
-      { "platform": "macos", "arch": "arm64", "reason": "SDK-only validation; browser artifact is not yet a declared target." }
+      { "platform": "linux", "arch": "arm64", "reason": "No signed browser artifact is declared for launch." }
     ]
   },
   "sdk": {
@@ -26,10 +41,20 @@
     "python": {
       "versions": ["3.10", "3.12", "3.14"],
       "platforms": ["windows", "linux", "macos"]
+    },
+    "java": {
+      "versions": ["11", "17", "21"],
+      "platforms": ["windows", "linux", "macos"]
+    },
+    "dotnet": {
+      "versions": ["8", "9", "10"],
+      "platforms": ["windows", "linux", "macos"]
     }
   },
   "containers": {
-    "status": "unsupported",
-    "reason": "Docker is not a declared browser-runtime target until a signed Linux artifact and route-integrity suite pass."
+    "status": "launch-target",
+    "basePlatform": "linux",
+    "baseArch": "x64",
+    "reason": "Docker is a launch target backed by the signed Linux x64 browser/WebDriver artifact and must pass container route-integrity smoke tests before public download."
   }
 }

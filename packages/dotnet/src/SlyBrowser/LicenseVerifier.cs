@@ -12,8 +12,17 @@ public sealed record LicenseClaims(
     long IssuedAt,
     long NotBefore,
     long ExpiresAt,
+    string? BrowserVersion,
     string BrowserMin,
     string BrowserMax,
+    string? PlanId,
+    int? ConcurrencyLimit,
+    long? PaidThrough,
+    string? LicenseStatus,
+    string? ArtifactSha256,
+    string? BrowserSha256,
+    string? DriverSha256,
+    long? LeaseGeneration,
     IReadOnlyList<string> Features,
     string SessionId,
     string Nonce,
@@ -77,8 +86,8 @@ public sealed class LicenseVerifier
             byte[] signature;
             try
             {
-                payload = DecodeBase64Url(RequiredString(root, "payload"), MaxPayloadBytes);
-                signature = DecodeBase64Url(RequiredString(root, "signature"), 64);
+                payload = DecodeBase64Url(RequiredString(root, "payload", ((MaxPayloadBytes + 2) / 3) * 4), MaxPayloadBytes);
+                signature = DecodeBase64Url(RequiredString(root, "signature", 128), 64);
             }
             catch (FormatException exception)
             {
@@ -121,7 +130,7 @@ public sealed class LicenseVerifier
         if (root.ValueKind != JsonValueKind.Object)
             throw Fail("license_invalid_claims", "License payload must be an object");
         int schemaVersion = checked((int)RequiredInteger(root, "schemaVersion"));
-        if (schemaVersion != 1)
+        if (schemaVersion is not (1 or 2))
             throw Fail("license_schema_unsupported", "License schema is not supported");
         string claimAudience = RequiredString(root, "audience");
         if (!StringComparer.Ordinal.Equals(claimAudience, audience))
@@ -142,12 +151,74 @@ public sealed class LicenseVerifier
 
         string browserMin = RequiredString(root, "browserMin");
         string browserMax = RequiredString(root, "browserMax");
+        string? claimBrowserVersion = root.TryGetProperty("browserVersion", out JsonElement browserVersionElement) &&
+            browserVersionElement.ValueKind != JsonValueKind.Null
+            ? RequiredString(root, "browserVersion")
+            : null;
+        if (schemaVersion == 2 && claimBrowserVersion != browserVersion)
+            throw Fail("license_browser_unsupported", "Browser version is outside the license range");
         if (!Version.TryParse(browserVersion, out Version? current) ||
             !Version.TryParse(browserMin, out Version? minimum) ||
             !Version.TryParse(browserMax, out Version? maximum))
             throw Fail("license_invalid_claims", "Browser version is invalid");
         if (current < minimum || current > maximum)
             throw Fail("license_browser_unsupported", "Browser version is outside the license range");
+
+        string? planId = root.TryGetProperty("planId", out JsonElement planIdElement) && planIdElement.ValueKind != JsonValueKind.Null
+            ? RequiredString(root, "planId")
+            : null;
+        int? concurrencyLimit = null;
+        if (root.TryGetProperty("concurrencyLimit", out JsonElement concurrencyElement) &&
+            concurrencyElement.ValueKind != JsonValueKind.Null)
+        {
+            long value = RequiredInteger(root, "concurrencyLimit");
+            if (value < 1 || value > 100000)
+                throw Fail("license_invalid_claims", "Claim concurrencyLimit is invalid");
+            concurrencyLimit = checked((int)value);
+        }
+        long? paidThrough = null;
+        if (root.TryGetProperty("paidThrough", out JsonElement paidThroughElement) &&
+            paidThroughElement.ValueKind != JsonValueKind.Null)
+        {
+            long value = RequiredInteger(root, "paidThrough");
+            if (value < 0)
+                throw Fail("license_invalid_claims", "Claim paidThrough is invalid");
+            paidThrough = value;
+        }
+        string? licenseStatus = root.TryGetProperty("licenseStatus", out JsonElement licenseStatusElement) &&
+            licenseStatusElement.ValueKind != JsonValueKind.Null
+            ? RequiredString(root, "licenseStatus")
+            : null;
+        if (licenseStatus is not null && licenseStatus is not ("active" or "hold" or "revoked"))
+            throw Fail("license_invalid_claims", "Claim licenseStatus is invalid");
+        string? artifactSha256 = root.TryGetProperty("artifactSha256", out JsonElement artifactElement) &&
+            artifactElement.ValueKind != JsonValueKind.Null
+            ? RequiredString(root, "artifactSha256")
+            : null;
+        if (artifactSha256 is not null && !System.Text.RegularExpressions.Regex.IsMatch(artifactSha256, "^[a-f0-9]{64}$"))
+            throw Fail("license_invalid_claims", "Claim artifactSha256 is invalid");
+        string? browserSha256 = root.TryGetProperty("browserSha256", out JsonElement browserShaElement) &&
+            browserShaElement.ValueKind != JsonValueKind.Null
+            ? RequiredString(root, "browserSha256")
+            : null;
+        if (browserSha256 is not null && !System.Text.RegularExpressions.Regex.IsMatch(browserSha256, "^[a-f0-9]{64}$"))
+            throw Fail("license_invalid_claims", "Claim browserSha256 is invalid");
+        string? driverSha256 = root.TryGetProperty("driverSha256", out JsonElement driverShaElement) &&
+            driverShaElement.ValueKind != JsonValueKind.Null
+            ? RequiredString(root, "driverSha256")
+            : null;
+        if (driverSha256 is not null && !System.Text.RegularExpressions.Regex.IsMatch(driverSha256, "^[a-f0-9]{64}$"))
+            throw Fail("license_invalid_claims", "Claim driverSha256 is invalid");
+        long? leaseGeneration = null;
+        if (root.TryGetProperty("leaseGeneration", out JsonElement generationElement) &&
+            generationElement.ValueKind != JsonValueKind.Null)
+        {
+            long value = RequiredInteger(root, "leaseGeneration");
+            if (value < 1)
+                throw Fail("license_invalid_claims", "Claim leaseGeneration is invalid");
+            leaseGeneration = value;
+        }
+        ValidateArtifact(root, schemaVersion, artifactSha256, browserSha256, driverSha256);
 
         if (!root.TryGetProperty("features", out JsonElement featuresElement) ||
             featuresElement.ValueKind != JsonValueKind.Array)
@@ -178,20 +249,98 @@ public sealed class LicenseVerifier
             issuedAt,
             notBefore,
             expiresAt,
+            claimBrowserVersion,
             browserMin,
             browserMax,
+            planId,
+            concurrencyLimit,
+            paidThrough,
+            licenseStatus,
+            artifactSha256,
+            browserSha256,
+            driverSha256,
+            leaseGeneration,
             features,
             RequiredString(root, "sessionId"),
             RequiredString(root, "nonce"),
             claimDeviceHash);
     }
 
+    private static void ValidateArtifact(
+        JsonElement root,
+        int schemaVersion,
+        string? artifactSha256,
+        string? browserSha256,
+        string? driverSha256)
+    {
+        if (!root.TryGetProperty("artifact", out JsonElement artifact) || artifact.ValueKind == JsonValueKind.Null)
+        {
+            if (schemaVersion == 2) throw Fail("license_invalid_claims", "Claim artifact is invalid");
+            return;
+        }
+        if (artifact.ValueKind != JsonValueKind.Object)
+            throw Fail("license_invalid_claims", "Claim artifact is invalid");
+        string platform = RequiredString(artifact, "platform");
+        string arch = RequiredString(artifact, "arch");
+        string archiveFormat = RequiredString(artifact, "archiveFormat");
+        if (platform is not ("windows" or "linux" or "macos") ||
+            arch is not ("x64" or "arm64") ||
+            archiveFormat != "zip")
+            throw Fail("license_invalid_claims", "Claim artifact is invalid");
+        string artifactHash = RequiredString(artifact, "sha256");
+        string browserHash = RequiredString(artifact, "browserSha256");
+        string driverHash = RequiredString(artifact, "driverSha256");
+        if (!IsSha256(artifactHash) || !IsSha256(browserHash) || !IsSha256(driverHash) ||
+            artifactHash != artifactSha256 || browserHash != browserSha256 || driverHash != driverSha256)
+            throw Fail("license_invalid_claims", "Claim artifact does not match flat hashes");
+        _ = RequiredString(artifact, "browserExecutable");
+        _ = RequiredString(artifact, "driverExecutable");
+        ValidateHashArray(artifact, "privateModules", requireAbi: true);
+        ValidateHashArray(artifact, "resources", requireAbi: false);
+        if (artifact.TryGetProperty("codeSignature", out JsonElement signature))
+        {
+            if (signature.ValueKind != JsonValueKind.Object)
+                throw Fail("license_invalid_claims", "Claim artifact is invalid");
+            string scheme = RequiredString(signature, "scheme");
+            string certificateSha256 = RequiredString(signature, "certificateSha256");
+            if (scheme is not ("authenticode" or "apple-developer-id" or "x509-code-signing") ||
+                !IsSha256(certificateSha256) ||
+                !signature.TryGetProperty("timestampRequired", out JsonElement timestampRequired) ||
+                timestampRequired.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw Fail("license_invalid_claims", "Claim artifact is invalid");
+            _ = RequiredString(signature, "subject");
+        }
+    }
+
+    private static void ValidateHashArray(JsonElement root, string name, bool requireAbi)
+    {
+        if (!root.TryGetProperty(name, out JsonElement values) || values.ValueKind != JsonValueKind.Array)
+            throw Fail("license_invalid_claims", "Claim artifact is invalid");
+        foreach (JsonElement value in values.EnumerateArray())
+        {
+            if (value.ValueKind != JsonValueKind.Object) throw Fail("license_invalid_claims", "Claim artifact is invalid");
+            string sha256 = RequiredString(value, "sha256");
+            long size = RequiredInteger(value, "size");
+            if (!IsSha256(sha256) || size < 0) throw Fail("license_invalid_claims", "Claim artifact is invalid");
+            _ = RequiredString(value, "path");
+            if (requireAbi) _ = RequiredString(value, "abi");
+        }
+    }
+
+    private static bool IsSha256(string value) =>
+        System.Text.RegularExpressions.Regex.IsMatch(value, "^[a-f0-9]{64}$");
+
     private static string RequiredString(JsonElement root, string name)
+    {
+        return RequiredString(root, name, 512);
+    }
+
+    private static string RequiredString(JsonElement root, string name, int maximum)
     {
         if (!root.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.String)
             throw Fail("license_invalid_claims", $"Claim {name} is invalid");
         string? value = element.GetString();
-        if (string.IsNullOrEmpty(value) || value.Length > 512)
+        if (string.IsNullOrEmpty(value) || value.Length > maximum)
             throw Fail("license_invalid_claims", $"Claim {name} is invalid");
         return value;
     }

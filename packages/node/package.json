@@ -4,6 +4,26 @@
   "description": "Node.js SDK for SlyBrowser",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://slybrowser.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/virtualfanc/slybrowser.git",
+    "directory": "packages/node"
+  },
+  "bugs": {
+    "url": "https://github.com/virtualfanc/slybrowser/issues"
+  },
+  "keywords": [
+    "slybrowser",
+    "webdriver",
+    "playwright",
+    "puppeteer",
+    "browser-automation"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -29,8 +49,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "playwright-core": ">=1.50.0",
-    "puppeteer-core": ">=24.0.0"
+    "playwright-core": ">=1.62.0 <1.63.0",
+    "puppeteer-core": ">=25.0.0 <26.0.0"
   },
   "peerDependenciesMeta": {
     "playwright-core": {
@@ -41,15 +61,15 @@
     }
   },
   "devDependencies": {
-    "@types/extract-zip": "2.0.0",
-    "@types/node": "^24.0.0",
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1",
-    "typescript": "^5.9.0",
-    "vitest": "^3.2.0",
-    "yaml": "^2.8.0"
+    "@types/node": "24.13.3",
+    "@types/yauzl": "3.4.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7",
+    "yaml": "2.9.0"
   },
   "dependencies": {
-    "extract-zip": "2.0.1"
+    "yauzl": "3.4.0"
   }
 }

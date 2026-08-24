@@ -2,7 +2,7 @@ import { useState } from "react";
 import { snippets, type Language } from "../siteData";
 import { Icon } from "./Icons";
 
-const languages: Language[] = ["Node.js", "Python", ".NET"];
+const languages: Language[] = ["Node.js", "Python", "Java", ".NET"];
 
 function ColorizedCode({ code }: { code: string }) {
   const tokenPattern = /(\/\/.*|#.*|\b(?:import|from|const|await|new|var|profile|screen)\b|"[^"\n]*"|\b\d+\b)/g;

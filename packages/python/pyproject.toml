@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "SlyBrowser contributors" }]
+keywords = ["slybrowser", "webdriver", "playwright", "browser-automation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3",
@@ -21,7 +22,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-playwright = ["playwright>=1.50"]
+playwright = ["playwright>=1.62,<1.63"]
+
+[project.urls]
+Homepage = "https://slybrowser.com"
+Repository = "https://github.com/virtualfanc/slybrowser"
+Issues = "https://github.com/virtualfanc/slybrowser/issues"
+Documentation = "https://github.com/virtualfanc/slybrowser#readme"
 
 [project.scripts]
 slybrowser = "slybrowser.cli:main"

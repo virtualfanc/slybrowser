@@ -33,6 +33,9 @@ __pycache__/
 **/obj/
 TestResults/
 
+# Java
+**/target/
+
 # Browser binaries, test evidence, and private Chromium source
 artifacts/
 tests/detection/browsers.local.json
@@ -53,3 +56,29 @@ release-staging/
 *.sqlite-shm
 *.sqlite-wal
 *.authorization.json
+
+# Local AI-agent instructions, state, and temporary output.
+/AGENTS.md
+/AGENTS.override.md
+/CLAUDE.md
+/.codex/
+/.claude/
+/.cursor/
+/.continue/
+/.aider/
+/.windsurf/
+/.agent/
+/.agents/
+/.ai/
+/memory/hot-cache.md
+/memory/open-loops.md
+**/codex-clipboard-*
+**/*-ai-scratch.*
+**/*-agent-scratch.*
+**/*-codex-scratch.*
+**/*-ai-transcript.*
+**/*-agent-transcript.*
+**/*-codex-transcript.*
+**/*.ai.tmp
+**/*.agent.tmp
+**/*.codex.tmp

@@ -8,8 +8,8 @@ differences are recorded alongside the scores.
 
 | Setting | SlyBrowser | CloakBrowser |
 | --- | --- | --- |
-| Browser | 148.0.7778.179 | Free 146.0.7680.177 |
-| Automation | Project-built ChromeDriver 148, W3C WebDriver | Official wrapper 0.5.7 over Playwright Core 1.62 |
+| Browser | Private preview build | Locally cached Free build |
+| Automation | Project-built ChromeDriver, W3C WebDriver | Official wrapper 0.5.7 over Playwright Core 1.62 |
 | Mode | Headed | Headed |
 | Behavioral layer | Deterministic W3C actions | `humanize=true`, `careful` preset |
 | Fingerprint | Current native project defaults | Seed 42424, Windows persona, default binary noise |
@@ -17,8 +17,8 @@ differences are recorded alongside the scores.
 | GeoIP | Not configured | Enabled; explicit direct-connection locale/timezone avoided an unnecessary database lookup |
 | Automation switches | Excluded `enable-automation`, `enable-unsafe-swiftshader` | Official wrapper defaults exclude the same Playwright switches |
 
-No CloakBrowser license key was present. The newest Pro Chromium 150 build was
-therefore not available; this run uses every feature available in the cached Free 146
+No CloakBrowser license key was present. The newest Pro build was therefore not
+available; this run uses every feature available in the cached Free
 binary plus the open wrapper's Humanize layer. A valid Pro result is still required
 before describing this as CloakBrowser's current commercial maximum.
 

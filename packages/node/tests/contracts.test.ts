@@ -5,6 +5,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
+import { LICENSE_SERVICE_ERROR_CODES } from "../src/errors.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
@@ -28,12 +29,47 @@ describe("shared contracts", () => {
     const ajv = new Ajv2020({ allErrors: true, strict: true });
     addFormats(ajv);
     for (const file of [
+      "contracts/automation-backends.schema.json",
+      "contracts/error-codes.schema.json",
       "contracts/launch-options.schema.json",
       "contracts/license-lease.schema.json",
       "contracts/release-manifest.schema.json",
     ]) {
       const schema = await json(file);
       expect(() => ajv.compile(schema)).not.toThrow();
+    }
+  });
+
+  it("declares the supported automation backend and language matrix", async () => {
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    addFormats(ajv);
+    const validate = ajv.compile(await json("contracts/automation-backends.schema.json"));
+    const compatibility = await json("contracts/automation-backends.json") as {
+      defaultBackend: string;
+      bindings: Record<string, { backends: Record<string, unknown> }>;
+    };
+    expect(validate(compatibility), JSON.stringify(validate.errors)).toBe(true);
+    expect(compatibility.defaultBackend).toBe("project-webdriver");
+    expect(Object.keys(compatibility.bindings)).toEqual(["node", "python", "java", "dotnet"]);
+    expect(compatibility.bindings.node.backends).toHaveProperty("puppeteer");
+    for (const language of ["python", "java", "dotnet"]) {
+      expect(compatibility.bindings[language]!.backends).not.toHaveProperty("puppeteer");
+    }
+  });
+
+  it("declares stable service error codes used by SDKs", async () => {
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    addFormats(ajv);
+    const validate = ajv.compile(await json("contracts/error-codes.schema.json"));
+    const contract = await json("contracts/error-codes.json") as {
+      codes: { code: string; httpStatuses: number[] }[];
+    };
+    expect(validate(contract), JSON.stringify(validate.errors)).toBe(true);
+    const codes = contract.codes.map((entry) => entry.code);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect([...LICENSE_SERVICE_ERROR_CODES]).toEqual(codes);
+    for (const entry of contract.codes) {
+      expect(entry.httpStatuses).toEqual([...entry.httpStatuses].sort((left, right) => left - right));
     }
   });
 

@@ -5,7 +5,15 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "automationBackend": { "type": "string", "const": "project-webdriver", "default": "project-webdriver" },
+    "automationBackend": {
+      "type": "string",
+      "enum": ["project-webdriver", "playwright", "puppeteer"],
+      "default": "project-webdriver"
+    },
+    "frameworkVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?(?:[-+][0-9A-Za-z.-]+)?$"
+    },
     "headless": { "type": "boolean", "default": true },
     "executablePath": { "type": "string", "minLength": 1 },
     "driverExecutable": { "type": "string", "minLength": 1 },

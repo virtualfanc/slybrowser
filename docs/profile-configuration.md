@@ -7,7 +7,7 @@ and long-lived license keys fail closed.
 
 The canonical public contract is
 [`contracts/launch-options.schema.json`](../contracts/launch-options.schema.json).
-It covers all 29 functional groups accepted by the inherited VB parser. Python and
+It covers all 29 functional groups accepted by the legacy profile parser. Python and
 Node high-level launch helpers may pass the profile fields directly; low-level and
 .NET callers may use the complete launch-options object with the fields below nested
 under `profile`.
@@ -21,7 +21,7 @@ Use placeholder credentials only in source-controlled fixtures.
 
 ## Parameter map
 
-| Public field | Inherited VB field | Native behavior |
+| Public field | Legacy profile field | Native behavior |
 | --- | --- | --- |
 | `proxy` | `proxy` | HTTP, HTTPS, SOCKS4, or SOCKS5 server; URL-encoded credentials and bypass rules are applied to Chromium proxy preferences |
 | `profile.userAgent` | `ua` | Overrides window, Worker, and request User-Agent values |
@@ -40,20 +40,20 @@ Use placeholder credentials only in source-controlled fixtures.
 | `profile.webgpu` | `webgpu` | Overrides WebGPU adapter vendor and architecture metadata |
 | `profile.audioContext` | `audio-context` | Supplies channel/analyzer seeds to the native audio profile path |
 | `profile.disabledCipherSuites` | `ssl` | Writes Chromium's disabled cipher-suite preference |
-| `profile.disabledMediaDevices` | `media` | Accepted and parsed for VB compatibility; the inherited source has no runtime consumer yet |
+| `profile.disabledMediaDevices` | `media` | Accepted and parsed for legacy-profile compatibility; the inherited source has no runtime consumer yet |
 | `profile.clientRects` | `client-rects` | Applies bounded width/height deltas in Element, Range, and SVG geometry |
 | `profile.speechVoices` | `speech_voices` | Replaces the speech-synthesis voice list |
 | `profile.cookies` | `cookie` | Installs validated cookie records during profile initialization |
 | `profile.hardwareConcurrency` | `cpu` | Overrides `navigator.hardwareConcurrency` in windows and Workers |
 | `profile.deviceMemory` | `memory` | Overrides `navigator.deviceMemory`; inherited Blink behavior caps the exposed value at 8 GiB |
 | `profile.deviceName` | `device-name` | Overrides the local sync device name |
-| `profile.macAddress` | `mac` | Accepted and parsed for VB compatibility; the inherited source has no runtime consumer yet |
+| `profile.macAddress` | `mac` | Accepted and parsed for legacy-profile compatibility; the inherited source has no runtime consumer yet |
 | `profile.doNotTrack` | `dnt` | Sets the DNT preference, JavaScript value, and request header |
 | `profile.allowedPorts` | `port-scan` | Writes the explicitly allowed network-port preference |
 | `profile.gpuEnabled` | `gpu` | Sets the hardware-acceleration preference |
 | `profile.homepages` | `homepage` | Supplies one or more validated HTTP(S) startup pages |
 
-`disabledMediaDevices` and `macAddress` are the only two VB fields without a runtime
+`disabledMediaDevices` and `macAddress` are the only two legacy profile fields without a runtime
 read site in the inherited Chromium source. They are mapped so existing profile data
 round-trips without loss, but they must not be described as active spoofing controls.
 
@@ -64,9 +64,9 @@ round-trips without loss, but they must not be described as active spoofing cont
 - `locale`, when combined with `languages`, must equal `languages[0]`.
 - Separate proxy credentials are percent-encoded into the proxy URL before handoff;
   proxy passwords must never be logged or committed.
-- `deviceScaleFactor` is not a VB profile parameter and is intentionally not in the
+- `deviceScaleFactor` is not a legacy profile parameter and is intentionally not in the
   contract.
-- Complete WebRTC shutdown is not implemented by the inherited VB modes;
+- Complete WebRTC shutdown is not implemented by the inherited legacy profile modes;
   `webrtc: "disabled"` is rejected instead of being silently mapped to proxy-only UDP.
 - Noise, geometry, port, coordinate, list-size, string-size, URL, and MAC-address
   values have explicit bounds in both JSON Schema and native validation.
@@ -79,7 +79,7 @@ that lease through a separate one-time file.
 ## Verification
 
 The focused native suite converts all 29 groups and then reparses the output through
-the inherited `FingerInfo` implementation. The local browser E2E fixture configures
+the inherited profile implementation. The local browser E2E fixture configures
 all groups and currently asserts 16 stable runtime groups: proxy bypass, User-Agent,
 full version, Client Hints, locale/languages, timezone, geolocation, screen, WebGL,
 WebGPU, Client Rects, disabled fonts, WebRTC proxy policy, CPU, memory, and DNT. The

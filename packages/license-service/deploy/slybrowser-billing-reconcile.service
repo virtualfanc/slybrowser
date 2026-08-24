@@ -1,0 +1,19 @@
+[Unit]
+Description=SlyBrowser PayNow billing reconciliation worker
+Documentation=file:/opt/slybrowser-billing/current/packages/license-service/README.md
+After=network-online.target slybrowser-billing.service
+Wants=network-online.target
+OnFailure=slybrowser-billing-alert@%n.service
+
+[Service]
+Type=oneshot
+User=slybrowser
+Group=slybrowser
+EnvironmentFile=/etc/slybrowser/billing.env
+ExecStart=/usr/local/bin/node /opt/slybrowser-billing/current/dist/cli.js billing-reconcile-paynow --payment-limit 100 --subscription-limit 100
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/slybrowser-billing
+WorkingDirectory=/opt/slybrowser-billing/current

@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from slybrowser.canonical import canonical_json, encode_base64url
 from slybrowser.errors import ArtifactError, ManifestError
-from slybrowser.manifest import verify_artifact, verify_release_manifest
+from slybrowser.manifest import is_sdk_compatible, verify_artifact, verify_release_manifest
 
 
 class ManifestTests(unittest.TestCase):
@@ -24,13 +24,14 @@ class ManifestTests(unittest.TestCase):
     def make_manifest(self, artifact_bytes: bytes = b"browser") -> dict[str, object]:
         payload: dict[str, object] = {
             "schemaVersion": 1,
-            "browserVersion": "148.0.7778.179",
+            "browserVersion": "123.0.4567.89",
             "sdkCompatibility": ">=0.1.0 <0.2.0",
+            "status": "available",
             "artifacts": [
                 {
                     "platform": "windows",
                     "arch": "x64",
-                    "url": "https://downloads.slybrowser.com/test.zip",
+                    "url": "https://api.slybrowser.com/v1/releases/artifacts/test.zip",
                     "sha256": hashlib.sha256(artifact_bytes).hexdigest(),
                     "size": len(artifact_bytes),
                     "archiveFormat": "zip",
@@ -38,21 +39,38 @@ class ManifestTests(unittest.TestCase):
                     "driverExecutable": "chromedriver.exe",
                     "browserSha256": hashlib.sha256(b"browser").hexdigest(),
                     "driverSha256": hashlib.sha256(b"driver").hexdigest(),
+                    "privateModules": [{
+                        "path": "SlyBrowser/sly_private_module.dll",
+                        "sha256": hashlib.sha256(b"private-module").hexdigest(),
+                        "size": len(b"private-module"),
+                        "abi": "windows-x64",
+                    }],
+                    "resources": [{
+                        "path": "SlyBrowser/resources.pak",
+                        "sha256": hashlib.sha256(b"resources").hexdigest(),
+                        "size": len(b"resources"),
+                    }],
+                    "codeSignature": {
+                        "scheme": "authenticode",
+                        "subject": "CN=SlyBrowser Test Publisher",
+                        "certificateSha256": "3" * 64,
+                        "timestampRequired": True,
+                    },
                 }
             ],
             "evidence": {
                 "sbom": {
-                    "url": "https://downloads.slybrowser.com/test.sbom.json",
+                    "url": "https://api.slybrowser.com/v1/releases/evidence/test.sbom.json",
                     "sha256": "0" * 64, "size": 1,
                     "mediaType": "application/vnd.cyclonedx+json",
                 },
                 "provenance": {
-                    "url": "https://downloads.slybrowser.com/test.provenance.json",
+                    "url": "https://api.slybrowser.com/v1/releases/evidence/test.provenance.json",
                     "sha256": "1" * 64, "size": 1,
                     "mediaType": "application/vnd.in-toto+json",
                 },
                 "chromiumPatchInventory": {
-                    "url": "https://downloads.slybrowser.com/test.patches.json",
+                    "url": "https://api.slybrowser.com/v1/releases/evidence/test.patches.json",
                     "sha256": "2" * 64, "size": 1,
                     "mediaType": "application/vnd.slybrowser.chromium-patch-inventory+json",
                 },
@@ -77,6 +95,7 @@ class ManifestTests(unittest.TestCase):
             trusted_keys={"release-test": self.public_key},
         )
         artifact = manifest.select("windows", "x64")
+        self.assertEqual(manifest.status, "available")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory, "browser.zip")
             path.write_bytes(content)
@@ -99,7 +118,7 @@ class ManifestTests(unittest.TestCase):
             with self.assertRaises(ArtifactError):
                 verify_artifact(path, manifest.select("windows", "x64"))
 
-    def test_signed_manifest_without_supply_chain_evidence_is_rejected(self) -> None:
+    def test_signed_manifest_without_optional_supply_chain_evidence_is_accepted(self) -> None:
         document = self.make_manifest()
         document.pop("evidence")
         document.pop("signature")
@@ -108,9 +127,16 @@ class ManifestTests(unittest.TestCase):
             "keyId": "release-test",
             "value": encode_base64url(self.private_key.sign(canonical_json(document))),
         }
-        with self.assertRaises(ManifestError) as raised:
-            verify_release_manifest(document, trusted_keys={"release-test": self.public_key})
-        self.assertEqual(raised.exception.code, "manifest_evidence_missing")
+        manifest = verify_release_manifest(document, trusted_keys={"release-test": self.public_key})
+        self.assertIsNone(manifest.evidence)
+        self.assertEqual(manifest.status, "available")
+
+    def test_caret_sdk_compatibility_ranges(self) -> None:
+        self.assertTrue(is_sdk_compatible("^0.1.0", "0.1.0"))
+        self.assertTrue(is_sdk_compatible("^0.1.0", "0.1.9"))
+        self.assertFalse(is_sdk_compatible("^0.1.0", "0.2.0"))
+        self.assertTrue(is_sdk_compatible("^1.2.3", "1.9.0"))
+        self.assertFalse(is_sdk_compatible("^1.2.3", "2.0.0"))
 
 
 if __name__ == "__main__":

@@ -11,10 +11,13 @@ No browser artifact is releasable until every gate below passes.
 
 ## 2. License compliance
 
-- Run Chromium's license scanner.
-- Generate credits from the exact build checkout.
-- Confirm SlyBrowser binary-license status is `approved` rather than `draft`.
-- Package required copyright, BSD, and third-party notices.
+- Run `scripts/browser/Check-Licenses.ps1` against the exact Chromium checkout and GN
+  output directory.
+- Generate `THIRD_PARTY_NOTICES.txt`, `CREDITS.html`, `CHROMIUM_LICENSES.txt`,
+  `BINARY-LICENSE.txt`, `LICENSE-SCOPE.txt`, and `release-legal-summary.json`.
+- Confirm the SlyBrowser binary license is the owner-approved launch file
+  `legal/BINARY-LICENSE.md`, not the archived draft.
+- Package required copyright, BSD, Chromium, and third-party notices.
 - Confirm Google Chrome branding and trademarked resources are disabled.
 
 ## 3. Build and test
@@ -37,16 +40,26 @@ No browser artifact is releasable until every gate below passes.
 - Keep the exact hash-matched signed browser and signed WebDriver as sibling files; do
   not mutate either executable after pairing validation.
 - Calculate archive size and SHA-256.
-- Produce a canonical release manifest with SDK compatibility and license version.
+- Produce a canonical release manifest with SDK compatibility and the four required
+  legal resources: `BINARY-LICENSE.txt`, `LICENSE-SCOPE.txt`,
+  `THIRD_PARTY_NOTICES.txt`, and `CREDITS.html`.
 - Sign through the protected release signing service.
 - Verify the published manifest and artifact from a clean machine before announcement.
 
 `scripts/release/New-UnsignedManifest.ps1` records the archive, browser and project-
-WebDriver hashes and archive-relative executable paths.
+WebDriver hashes, archive-relative executable paths, and required legal resource
+hashes.
 `scripts/release/Sign-ReleaseManifest.mjs` signs its canonical JSON payload with an
 Ed25519 release key. SDKs reject an archive or cached executable whose recorded hash no
 longer matches. Exact commands are in
 [Authorized browser delivery](authorized-release-service.md).
+`scripts/release/Verify-ReleaseBundle.mjs` emits a sanitized qualification summary
+with the signed manifest hash, artifact URL, archive/browser/WebDriver hashes, platform,
+architecture, SDK compatibility, saved browser version, and required legal resources.
+It fails closed when any required legal file is missing from the signed manifest or
+archive. Feed that summary plus the kernel-update score gate into
+`Build-QualificationReport.mjs`; the report blocks if the verified manifest hashes
+disagree with the release inputs.
 
 ## 5. Rollback
 

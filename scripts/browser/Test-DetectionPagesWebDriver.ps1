@@ -25,6 +25,16 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
+function Protect-SlyHandoffFile([string]$Path) {
+    if ($env:OS -ne 'Windows_NT') { return }
+    $identity = (& whoami).Trim()
+    if (-not $identity) { throw 'Unable to determine current Windows identity for handoff ACL.' }
+    & icacls $Path /inheritance:r /grant:r "${identity}:(F)" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to restrict handoff ACL for $Path."
+    }
+}
+
 if (-not $BrowserExecutable -or -not $DriverExecutable) {
     if (-not $ChromiumSrc) {
         throw 'Set -ChromiumSrc (or SLYBROWSER_CHROMIUM_SRC), or pass both -BrowserExecutable and -DriverExecutable.'
@@ -60,6 +70,8 @@ if ($LicenseFile) {
     $driverLicenseHandoff = Join-Path $temporaryRoot "sly-driver-license-$([guid]::NewGuid().ToString('N')).json"
     [System.IO.File]::WriteAllBytes($browserLicenseHandoff, $leaseBytes)
     [System.IO.File]::WriteAllBytes($driverLicenseHandoff, $leaseBytes)
+    Protect-SlyHandoffFile $browserLicenseHandoff
+    Protect-SlyHandoffFile $driverLicenseHandoff
     $launchArguments += "--sly-license-file=$browserLicenseHandoff"
 }
 if ($ProfileConfigFile) {

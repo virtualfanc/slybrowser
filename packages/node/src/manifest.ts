@@ -18,6 +18,29 @@ export interface ReleaseArtifact {
   driverExecutable: string;
   browserSha256: string;
   driverSha256: string;
+  privateModules: ReleasePrivateModule[];
+  resources: ReleaseResourceFile[];
+  codeSignature?: ReleaseCodeSignature;
+}
+
+export interface ReleasePrivateModule {
+  path: string;
+  sha256: string;
+  size: number;
+  abi: string;
+}
+
+export interface ReleaseResourceFile {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface ReleaseCodeSignature {
+  scheme: "authenticode" | "apple-developer-id" | "x509-code-signing";
+  subject: string;
+  certificateSha256: string;
+  timestampRequired: boolean;
 }
 
 export interface ReleaseEvidenceArtifact {
@@ -43,8 +66,9 @@ export interface ReleaseManifest {
   schemaVersion: 1;
   browserVersion: string;
   sdkCompatibility: string;
+  status: "available" | "revoked";
   artifacts: ReleaseArtifact[];
-  evidence: ReleaseEvidence;
+  evidence?: ReleaseEvidence;
   signature: { algorithm: "ed25519"; keyId: string; value: string };
 }
 
@@ -72,6 +96,7 @@ export function isSdkCompatible(range: string, version: string): boolean {
   const tokens = range.trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) fail("Manifest SDK compatibility is invalid", "manifest_invalid");
   return tokens.every((token) => {
+    if (token.startsWith("^")) return isCaretCompatible(token.slice(1), version);
     const match = /^(>=|<=|>|<|=)?(\d+(?:\.\d+){0,7})$/.exec(token);
     if (!match) fail("Manifest SDK compatibility is invalid", "manifest_invalid");
     const comparison = compareNumericVersions(version, match[2]!);
@@ -83,6 +108,19 @@ export function isSdkCompatible(range: string, version: string): boolean {
       default: return comparison === 0;
     }
   });
+}
+
+function isCaretCompatible(base: string, version: string): boolean {
+  const parts = numericVersion(base);
+  const major = parts[0] ?? 0;
+  const minor = parts[1] ?? 0;
+  const patch = parts[2] ?? 0;
+  const upper = major > 0
+    ? `${major + 1}.0.0`
+    : minor > 0
+      ? `0.${minor + 1}.0`
+      : `0.0.${patch + 1}`;
+  return compareNumericVersions(version, base) >= 0 && compareNumericVersions(version, upper) < 0;
 }
 
 export function verifyReleaseManifest(
@@ -139,6 +177,9 @@ export function verifyReleaseManifest(
   if (typeof document.sdkCompatibility !== "string" || !document.sdkCompatibility) {
     fail("Manifest SDK compatibility is invalid", "manifest_invalid");
   }
+  if (document.status !== "available" && document.status !== "revoked") {
+    fail("Manifest release status is invalid", "manifest_invalid");
+  }
   if (!Array.isArray(document.artifacts) || document.artifacts.length === 0) {
     fail("Manifest artifacts are invalid", "manifest_invalid");
   }
@@ -147,8 +188,8 @@ export function verifyReleaseManifest(
   if (new Set(identities).size !== identities.length) {
     fail("Manifest has duplicate platform artifacts", "manifest_duplicate_artifact");
   }
-  const evidence = parseEvidence(document.evidence);
-  return { ...(document as unknown as ReleaseManifest), artifacts, evidence };
+  const evidence = document.evidence === undefined ? undefined : parseEvidence(document.evidence);
+  return { ...(document as unknown as ReleaseManifest), artifacts, ...(evidence === undefined ? {} : { evidence }) };
 }
 
 function parseEvidenceArtifact(value: unknown, mediaType: ReleaseEvidenceArtifact["mediaType"]): ReleaseEvidenceArtifact {
@@ -191,7 +232,13 @@ function parseEvidence(value: unknown): ReleaseEvidence {
 function parseArtifact(value: unknown): ReleaseArtifact {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("Artifact is invalid", "manifest_invalid");
   const document = value as Record<string, unknown>;
-  if (Object.keys(document).sort().join(",") !== "arch,archiveFormat,browserExecutable,browserSha256,driverExecutable,driverSha256,platform,sha256,size,url") {
+  const keys = Object.keys(document);
+  const requiredKeys = [
+    "arch", "archiveFormat", "browserExecutable", "browserSha256", "driverExecutable",
+    "driverSha256", "platform", "privateModules", "resources", "sha256", "size", "url",
+  ];
+  const allowedKeys = new Set([...requiredKeys, "codeSignature"]);
+  if (requiredKeys.some((key) => !keys.includes(key)) || keys.some((key) => !allowedKeys.has(key))) {
     fail("Artifact fields are invalid", "manifest_invalid");
   }
   if (!new Set(["windows", "linux", "macos"]).has(document.platform as string)) {
@@ -216,12 +263,66 @@ function parseArtifact(value: unknown): ReleaseArtifact {
       typeof document.driverSha256 !== "string" || !/^[a-f0-9]{64}$/.test(document.driverSha256)) {
     fail("Artifact runtime metadata is invalid", "manifest_invalid");
   }
-  return document as unknown as ReleaseArtifact;
+  const privateModules = parsePrivateModules(document.privateModules);
+  const resources = parseResources(document.resources);
+  const codeSignature = Object.hasOwn(document, "codeSignature")
+    ? parseCodeSignature(document.codeSignature)
+    : undefined;
+  return {
+    ...(document as unknown as ReleaseArtifact),
+    privateModules,
+    resources,
+    ...(codeSignature === undefined ? {} : { codeSignature }),
+  };
 }
 
 function safeRelativePath(value: string): boolean {
   return value.length > 0 && value.length <= 512 && !value.startsWith("/") && !value.startsWith("\\") &&
     !/^[A-Za-z]:/.test(value) && !value.replaceAll("\\", "/").split("/").includes("..");
+}
+
+function parsePrivateModules(value: unknown): ReleasePrivateModule[] {
+  if (!Array.isArray(value) || value.length === 0) fail("Artifact private module metadata is invalid", "manifest_invalid");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) fail("Artifact private module metadata is invalid", "manifest_invalid");
+    const document = item as Record<string, unknown>;
+    if (Object.keys(document).sort().join(",") !== "abi,path,sha256,size" ||
+        typeof document.path !== "string" || !safeRelativePath(document.path) ||
+        typeof document.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(document.sha256) ||
+        !Number.isSafeInteger(document.size) || (document.size as number) <= 0 ||
+        typeof document.abi !== "string" || document.abi.length === 0 || document.abi.length > 128) {
+      fail("Artifact private module metadata is invalid", "manifest_invalid");
+    }
+    return document as unknown as ReleasePrivateModule;
+  });
+}
+
+function parseResources(value: unknown): ReleaseResourceFile[] {
+  if (!Array.isArray(value) || value.length === 0) fail("Artifact resource metadata is invalid", "manifest_invalid");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) fail("Artifact resource metadata is invalid", "manifest_invalid");
+    const document = item as Record<string, unknown>;
+    if (Object.keys(document).sort().join(",") !== "path,sha256,size" ||
+        typeof document.path !== "string" || !safeRelativePath(document.path) ||
+        typeof document.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(document.sha256) ||
+        !Number.isSafeInteger(document.size) || (document.size as number) <= 0) {
+      fail("Artifact resource metadata is invalid", "manifest_invalid");
+    }
+    return document as unknown as ReleaseResourceFile;
+  });
+}
+
+function parseCodeSignature(value: unknown): ReleaseCodeSignature {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("Artifact code signature metadata is invalid", "manifest_invalid");
+  const document = value as Record<string, unknown>;
+  if (Object.keys(document).sort().join(",") !== "certificateSha256,scheme,subject,timestampRequired" ||
+      !new Set(["authenticode", "apple-developer-id", "x509-code-signing"]).has(document.scheme as string) ||
+      typeof document.subject !== "string" || document.subject.length === 0 || document.subject.length > 512 ||
+      typeof document.certificateSha256 !== "string" || !/^[a-f0-9]{64}$/.test(document.certificateSha256) ||
+      typeof document.timestampRequired !== "boolean") {
+    fail("Artifact code signature metadata is invalid", "manifest_invalid");
+  }
+  return document as unknown as ReleaseCodeSignature;
 }
 
 export function selectArtifact(manifest: ReleaseManifest, platform: string, arch: string): ReleaseArtifact {

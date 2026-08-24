@@ -104,7 +104,7 @@ const profileA = join(root, "profile-a");
 const profileB = join(root, "profile-b");
 await mkdir(root, { recursive: true });
 const expected = {
-  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
   locale: "fr-FR",
   languages: ["fr-FR", "fr"],
   timezone: "Europe/Paris",

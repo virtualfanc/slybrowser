@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/contracts/error-codes.schema.json",
+  "title": "SlyBrowser stable license-service error codes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scope", "codes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "scope": { "const": "slybrowser-license-service" },
+    "codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "category", "httpStatuses", "retryable", "exposeToSdk"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,96}$"
+          },
+          "category": {
+            "enum": [
+              "admin",
+              "artifact",
+              "auth",
+              "billing",
+              "email",
+              "feedback",
+              "license",
+              "paynow",
+              "release",
+              "request",
+              "runtime",
+              "server",
+              "store"
+            ]
+          },
+          "httpStatuses": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 400,
+              "maximum": 599
+            }
+          },
+          "retryable": { "type": "boolean" },
+          "exposeToSdk": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

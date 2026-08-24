@@ -13,10 +13,10 @@ Three conclusions are decision-relevant:
    CDP/persistent-context reliability, exact version delivery and binary trust. Six P0
    requirements are proposed for confirmation; public reports are discovery evidence,
    not automatically proven defects.
-2. The website now uses the saved paired 40-entry run: **SlyBrowser 75.73 versus stock
-   Chromium 72.11** on coverage-adjusted score. The browsers are Chromium 148 and 153,
-   so this is directional operational evidence rather than a same-major fingerprint or
-   TLS claim.
+2. The website now uses the saved paired 40-entry run: **SlyBrowser score 75.73 versus
+   stock Chromium score 72.11** on coverage-adjusted score. The saved browsers use different major
+   release lines, so this is directional operational evidence rather than a same-major
+   fingerprint or TLS claim.
 3. The package contract and much of the entitlement engine exist, but public paid
    launch does not. A transparent launch-gate rubric scores current readiness at
    **54/100**. A manually operated private preview is reasonable; public self-serve
@@ -26,7 +26,7 @@ Three conclusions are decision-relevant:
 
 Source: `artifacts/test-results/detection/live-20260815/comparison.json`.
 
-| Metric | SlyBrowser 148.0.7778.179 | Stock Chromium / Playwright 153.0.8003.0 | Difference |
+| Metric | SlyBrowser private preview | Stock Chromium / Playwright | Difference |
 | --- | ---: | ---: | ---: |
 | Coverage-adjusted score | 75.73 | 72.11 | SlyBrowser +3.62 |
 | Raw score on completed graded checks | 83.99 | 72.11 | SlyBrowser +11.88 |
@@ -70,12 +70,12 @@ being inferred from implementation progress.
 
 | Gate | Weight | Completion | Weighted points | Evidence present | Blocking gap |
 | --- | ---: | ---: | ---: | --- | --- |
-| Offer and package contract | 15% | 90% | 13.50 | Free/Launch/Studio/Fleet/Grid prices and 1/5/20/200/2,000 concurrency match contracts, service and website. Same browser-quality baseline is documented. | Validate willingness-to-pay and clarify Free commercial-use rights, support/SLA and burst rules. |
+| Offer and package contract | 15% | 95% | 14.25 | Free/Launch/Studio/Fleet/Grid prices and 1/5/20/200/2,000 concurrency match contracts, service and website. Free is long-term, Fleet/Grid are self-serve, and the same browser-quality baseline is documented. | Validate willingness-to-pay, support cost and burst behavior under production load. |
 | Entitlement and runtime control | 25% | 75% | 18.75 | HMAC-peppered credentials, Ed25519 leases, exact-version selection, transactional reserve/heartbeat/release, downgrade and Grid N/N+1 tests exist. | Current private `args.gn` does not enable production browser or WebDriver enforcement/pairing; production keys/service/revocation drills are absent. |
 | Authorized delivery and update | 20% | 60% | 12.00 | Signed-manifest and SHA-256 verification, authorized artifact routes, safe Node/Python install/cache and exact project WebDriver selection exist. | No production-signed release, protected artifact host, clean-machine qualification, production rollback exercise or final .NET validation. |
-| Billing and entitlement lifecycle | 20% | 35% | 7.00 | Hosted PayNow test checkout, HMAC/timestamp/store verification, idempotency and activation/renewal/cancel ledger exist. | Anonymous checkout remains unlinked; no automatic subscription-to-license reconciliation; refund/chargeback events are unsupported; production webhook is not deployed. |
-| Operations, legal and launch controls | 20% | 15% | 3.00 | Deployment samples, topology and privacy boundary are documented. | Binary terms, privacy/AUP/refund/tax/support ownership, production monitoring/backups/key rotation/DR, shared PostgreSQL authority, multi-node load tests and incident process are incomplete. |
-| **Total launch-gate readiness** | **100%** | — | **54.25 / 100** | Strong local engineering foundation. | Not ready for public paid launch. |
+| Billing and entitlement lifecycle | 20% | 70% | 14.00 | Hosted PayNow test checkout, HMAC/timestamp/store verification, idempotency, activation/renewal/cancel ledger, full-order refund revocation and chargeback hold exist. | Production webhook/live payment evidence, chargeback-closed final policy and production deployment remain. |
+| Operations, legal and launch controls | 20% | 35% | 7.00 | Deployment samples, topology, privacy boundary and legal policy draft are documented. | Final operating entity, tax/legal review, production monitoring/backups/key rotation/DR, shared PostgreSQL authority, multi-node load tests and incident process are incomplete. |
+| **Total launch-gate readiness** | **100%** | — | **66.00 / 100** | Strong local engineering foundation plus confirmed core commercial rules. | Not ready for public paid launch. |
 
 ### What is usable now
 
@@ -87,7 +87,7 @@ being inferred from implementation progress.
 ### What is not complete
 
 - Account-bound checkout → verified payment → entitlement issuance/reconciliation.
-- Refund/chargeback and disputed-payment policy enforcement.
+- Chargeback-closed disputed-payment final policy and live evidence.
 - Production browser/WebDriver license and sibling-binary pairing enforcement.
 - Production signing, artifact hosting, monitoring, backups, rotation and rollback.
 - Multi-node Fleet/Grid concurrency authority and scale evidence.
@@ -112,7 +112,8 @@ being inferred from implementation progress.
    commercial preview.
 3. Choose the launch supply-chain disclosure level: signatures+hashes; plus SBOM and
    provenance; or also the complete publishable Chromium patch inventory.
-4. Confirm launch platforms: Windows only, Windows+Linux/Docker, or also macOS arm64.
+4. Produce launch-target artifacts and smoke evidence for Windows x64, Linux x64/Docker
+   and macOS x64/arm64.
 5. Confirm that public checkout remains disabled until Gate 2 is complete.
 
 ## Caveats and sources

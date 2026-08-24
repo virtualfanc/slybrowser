@@ -31,8 +31,10 @@ class LicenseVerifierTests(unittest.TestCase):
             "issuedAt": NOW - 10,
             "notBefore": NOW - 10,
             "expiresAt": NOW + 300,
-            "browserMin": "148.0.0.0",
-            "browserMax": "148.9999.9999.9999",
+            "browserMin": "123.0.0.0",
+            "browserMax": "123.9999.9999.9999",
+            "planId": "launch",
+            "concurrencyLimit": 5,
             "features": ["profiles", "proxy"],
             "sessionId": "session_test",
             "nonce": "nonce_test",
@@ -50,12 +52,53 @@ class LicenseVerifierTests(unittest.TestCase):
     def test_valid_lease(self) -> None:
         claims = self.verifier.verify(
             self.make_envelope(),
-            browser_version="148.0.7778.179",
+            browser_version="123.0.4567.89",
             required_features=("profiles",),
             device_hash="device_test",
         )
         self.assertEqual(claims.license_id, "lic_test")
+        self.assertEqual(claims.plan_id, "launch")
+        self.assertEqual(claims.concurrency_limit, 5)
         self.assertEqual(claims.features, ("profiles", "proxy"))
+
+    def test_v2_lease_with_signed_artifact_state(self) -> None:
+        artifact = {
+            "sha256": "a" * 64,
+            "platform": "windows",
+            "arch": "x64",
+            "archiveFormat": "zip",
+            "browserExecutable": "SlyBrowser.exe",
+            "driverExecutable": "chromedriver.exe",
+            "browserSha256": "b" * 64,
+            "driverSha256": "c" * 64,
+            "privateModules": [{"path": "SlyBrowser/sly_private_module.dll", "sha256": "d" * 64, "size": 14, "abi": "windows-x64"}],
+            "resources": [{"path": "SlyBrowser/resources.pak", "sha256": "e" * 64, "size": 9}],
+            "codeSignature": {
+                "scheme": "authenticode",
+                "subject": "CN=SlyBrowser Test Publisher",
+                "certificateSha256": "f" * 64,
+                "timestampRequired": True,
+            },
+        }
+        claims = self.verifier.verify(
+            self.make_envelope(
+                schemaVersion=2,
+                browserVersion="123.0.4567.89",
+                browserMin="123.0.4567.89",
+                browserMax="123.0.4567.89",
+                artifactSha256=artifact["sha256"],
+                browserSha256=artifact["browserSha256"],
+                driverSha256=artifact["driverSha256"],
+                artifact=artifact,
+                leaseGeneration=NOW + 300,
+            ),
+            browser_version="123.0.4567.89",
+            required_features=("profiles",),
+            device_hash="device_test",
+        )
+        self.assertEqual(claims.schema_version, 2)
+        self.assertEqual(claims.browser_version, "123.0.4567.89")
+        self.assertEqual(claims.artifact["privateModules"][0]["abi"], "windows-x64")  # type: ignore[index]
 
     def test_tampered_payload_is_rejected(self) -> None:
         envelope = self.make_envelope()
@@ -63,13 +106,13 @@ class LicenseVerifierTests(unittest.TestCase):
         payload["features"].append("admin")
         envelope["payload"] = encode_base64url(canonical_json(payload))
         with self.assertRaisesRegex(LicenseError, "signature") as raised:
-            self.verifier.verify(envelope, browser_version="148.0.7778.179")
+            self.verifier.verify(envelope, browser_version="123.0.4567.89")
         self.assertEqual(raised.exception.code, "license_invalid_signature")
 
     def test_expired_lease_is_rejected(self) -> None:
         envelope = self.make_envelope(issuedAt=NOW - 400, notBefore=NOW - 400, expiresAt=NOW - 40)
         with self.assertRaises(LicenseError) as raised:
-            self.verifier.verify(envelope, browser_version="148.0.7778.179")
+            self.verifier.verify(envelope, browser_version="123.0.4567.89")
         self.assertEqual(raised.exception.code, "license_expired")
 
     def test_wrong_browser_and_feature_are_rejected(self) -> None:
@@ -79,7 +122,7 @@ class LicenseVerifierTests(unittest.TestCase):
         with self.assertRaises(LicenseError) as raised:
             self.verifier.verify(
                 self.make_envelope(),
-                browser_version="148.0.0.0",
+                browser_version="123.0.0.0",
                 required_features=("enterprise",),
             )
         self.assertEqual(raised.exception.code, "license_feature_denied")
@@ -88,12 +131,12 @@ class LicenseVerifierTests(unittest.TestCase):
         unknown = self.make_envelope()
         unknown["keyId"] = "unknown"
         with self.assertRaises(LicenseError) as raised:
-            self.verifier.verify(unknown, browser_version="148.0.0.0")
+            self.verifier.verify(unknown, browser_version="123.0.0.0")
         self.assertEqual(raised.exception.code, "license_key_unknown")
         downgraded = self.make_envelope()
         downgraded["algorithm"] = "HS256"
         with self.assertRaises(LicenseError) as raised:
-            self.verifier.verify(downgraded, browser_version="148.0.0.0")
+            self.verifier.verify(downgraded, browser_version="123.0.0.0")
         self.assertEqual(raised.exception.code, "license_algorithm_unsupported")
 
 

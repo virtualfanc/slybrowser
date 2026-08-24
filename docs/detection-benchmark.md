@@ -23,7 +23,7 @@ mirrors are intentionally excluded. Turnstile's built-in test keys are used only
 functional E2E checks and are never counted as anti-detection passes because Cloudflare
 documents that they return predetermined outcomes.
 
-## Playwright runner
+## Framework runner (Playwright and Puppeteer)
 
 Copy `tests/detection/browsers.example.json` to the ignored file
 `tests/detection/browsers.local.json`, then set the referenced environment variables.
@@ -32,15 +32,35 @@ Do not place license values or proxy passwords in the JSON file.
 ```powershell
 $env:STOCK_CHROME_EXE = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 $env:CLOAKBROWSER_BINARY_PATH = 'C:\path\to\cloakbrowser.exe'
-$env:SLYBROWSER_BINARY_PATH = 'F:\chrome\src\out\release_x64\SlyBrowser.exe'
+$env:SLYBROWSER_BINARY_PATH = 'E:\multilogin\chrome\src\out\release_x64\SlyBrowser.exe'
 $env:SLYBROWSER_TEST_LICENSE_FILE = 'C:\secure\short-lived-test-lease.json'
 
 ./scripts/browser/Test-DetectionPages.ps1 `
   -BrowserConfig ./tests/detection/browsers.local.json
 ```
 
-This path is useful for comparing SDK/Playwright launch behavior across browser
-targets. It is distinct from the project's W3C WebDriver path below.
+Each browser entry may set `provider` to `playwright-core` or `puppeteer-core`;
+omitting it preserves the Playwright default. This path is useful for comparing
+framework launch behavior across browser targets. It is distinct from the project's
+W3C WebDriver path below. Puppeteer is a Node.js/TypeScript-only integration and is
+not exposed by the Python, Java or .NET packages.
+
+The controlled strongest-mode script runs the project WebDriver result plus a
+four-way framework matrix: SlyBrowser and stock Chromium through both Playwright and
+Puppeteer. It creates a fresh one-time license/profile handoff for every SlyBrowser
+process, records the installed framework binding version, and runs the Node.js,
+Python, Java and .NET Native Humanize score parity gate before publishing the public
+comparison:
+
+```powershell
+.\scripts\browser\Test-SlyVsChromiumStrongest.ps1 `
+  -LicenseFile 'C:\secure\short-lived-test-lease.json' `
+  -ProfileConfigFile '.\tests\detection\profiles\strongest-benchmark.json'
+```
+
+Framework results deliberately record Native Humanize as unavailable instead of
+substituting framework mouse/keyboard helpers. Use `-SkipFrameworkBackends` only when
+running the legacy WebDriver-versus-stock-Playwright subset.
 
 ## Project WebDriver runner
 
@@ -50,14 +70,14 @@ It does not use Selenium Manager, a system driver, or a downloaded fallback. Bro
 and driver SHA-256 values and reported versions are stored in the JSON result, and the
 run stops before collection if their major versions differ.
 
-This is the same transport used by the default JavaScript and Python SDK `launch()`
-functions. The benchmark requires explicit binary paths for reproducibility; normal
-SDK use resolves the sibling project driver automatically.
+This is the same transport used by the default JavaScript, Python, Java and .NET SDK
+launch functions. The benchmark requires explicit binary paths for reproducibility;
+normal SDK use resolves the sibling project driver automatically.
 
 When both binaries are in the same Chromium output directory:
 
 ```powershell
-$env:SLYBROWSER_CHROMIUM_SRC = 'F:\chrome\src'
+$env:SLYBROWSER_CHROMIUM_SRC = 'E:\multilogin\chrome\src'
 
 .\scripts\browser\Test-DetectionPagesWebDriver.ps1 `
   -OutDir 'out\release_x64'
@@ -67,8 +87,8 @@ Explicit paths are also supported:
 
 ```powershell
 .\scripts\browser\Test-DetectionPagesWebDriver.ps1 `
-  -BrowserExecutable 'F:\chrome\src\out\release_x64\SlyBrowser.exe' `
-  -DriverExecutable 'F:\chrome\src\out\release_x64\chromedriver.exe' `
+  -BrowserExecutable 'E:\multilogin\chrome\src\out\release_x64\SlyBrowser.exe' `
+  -DriverExecutable 'E:\multilogin\chrome\src\out\release_x64\chromedriver.exe' `
   -Only local-core-signals,local-context-consistency,device-browser-info
 ```
 
@@ -80,8 +100,8 @@ steps and are not rewritten. No DOM events are dispatched with JavaScript:
 
 ```powershell
 .\scripts\browser\Test-DetectionPagesWebDriver.ps1 `
-  -BrowserExecutable 'F:\chrome\src\out\release_x64\SlyBrowser.exe' `
-  -DriverExecutable 'F:\chrome\src\out\release_x64\chromedriver.exe' `
+  -BrowserExecutable 'E:\multilogin\chrome\src\out\release_x64\SlyBrowser.exe' `
+  -DriverExecutable 'E:\multilogin\chrome\src\out\release_x64\chromedriver.exe' `
   -Headed `
   -Humanize `
   -HumanPreset careful `
@@ -109,7 +129,7 @@ pass a long-lived license key:
 
 ```powershell
 .\scripts\browser\Test-DetectionPagesWebDriver.ps1 `
-  -ChromiumSrc 'F:\chrome\src' `
+  -ChromiumSrc 'E:\multilogin\chrome\src' `
   -LicenseFile 'C:\secure\short-lived-test-lease.json' `
   -ProfileConfigFile 'C:\secure\one-time-profile.json'
 ```
@@ -173,13 +193,17 @@ The report shows:
 
 Stock Chrome, CloakBrowser, and SlyBrowser runs should use the same host, network,
 proxy policy, locale, timezone, viewport, time window, automation transport, and
-browser major. Playwright-to-Playwright comparisons should also pin Playwright Core.
+browser major. Playwright-to-Playwright and Puppeteer-to-Puppeteer comparisons should
+also pin their respective binding lines.
 The runner records its transport, executable hashes, and versions. When browser majors
 or automation transports differ, treat the result as engineering evidence rather than
 a controlled parity claim.
+The public comparison and kernel-update gate preserve cross-major evidence but suppress
+numeric differences so a saved report cannot be mistaken for a same-major win/loss
+claim.
 
 Each run stores page text, common signals, screenshots, and structured verdicts under
-ignored `artifacts/test-results`. The Playwright runner also captures console output
+ignored `artifacts/test-results`. The framework runner also captures console output
 and request failures. WebDriver browser logs are opt-in. These files may expose the
 test machine's IP address and fingerprint and should be handled as sensitive evidence.
 

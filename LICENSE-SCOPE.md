@@ -20,9 +20,15 @@ A compiled SlyBrowser browser release is a separate deliverable. Each release mu
 include or link to the effective binary license for SlyBrowser-owned material and must
 also reproduce all notices required by Chromium and bundled third-party components.
 
-The current binary license text is intentionally maintained as a non-effective draft
-in [`legal/BINARY-LICENSE-DRAFT.md`](legal/BINARY-LICENSE-DRAFT.md) until the licensor,
-commercial grant, privacy terms, governing law, and support policy are approved.
+The current launch binary terms are maintained in
+[`legal/BINARY-LICENSE.md`](legal/BINARY-LICENSE.md). They cover only SlyBrowser-owned
+proprietary browser/WebDriver material and official service access; they do not replace
+or narrow Chromium or third-party open-source licenses.
+
+Every official browser release package must include `BINARY-LICENSE.txt`,
+`LICENSE-SCOPE.txt`, `THIRD_PARTY_NOTICES.txt`, and `CREDITS.html` generated or copied
+for the exact release. Release verification fails when those files are missing from the
+signed manifest or archive.
 
 No SlyBrowser commercial term is intended to restrict rights that a recipient receives
 directly under an applicable open-source license. If terms conflict for an upstream

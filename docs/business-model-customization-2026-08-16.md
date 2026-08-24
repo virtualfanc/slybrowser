@@ -71,10 +71,13 @@ The implementation and deployment commands are in
 ## Cancellation, renewal and failure policy
 
 A cancellation keeps paid capacity until the paid-through timestamp, then falls back to
-Free at one process. Local profiles are not deleted. If the service cannot be reached,
-an already issued lease remains valid only through its signed expiry; new processes do
-not receive unbounded grace. A normal close releases capacity immediately and a crash
-is reclaimed after the session TTL.
+Free at one process. Free can be used long term. Local profiles are not deleted. A
+failed renewal has no paid-access grace period: the original paid-through timestamp is
+the entitlement boundary. If the service cannot be reached, an already issued lease
+remains valid only through its signed expiry; new processes do not receive unbounded
+grace. A completed full refund immediately revokes the paid entitlement for that order.
+A normal close releases capacity immediately and a crash is reclaimed after the session
+TTL.
 
 The payment service is not an entitlement authority. Verified, idempotent PayNow
 activation/renewal/cancellation/refund/chargeback webhooks must update the license
@@ -98,19 +101,21 @@ not a claim that local binaries can never be copied.
 
 Before enabling public checkout:
 
-1. approve the binary license, privacy terms, acceptable-use terms, refund policy,
-   taxes, trademark language and support ownership;
+1. complete final operating-entity, tax and legal review for the binary license,
+   privacy terms, acceptable-use terms, refund policy, trademark language and support
+   ownership;
 2. deploy one authoritative TLS license service with protected lease key, release key,
    HMAC pepper, admin token, backup and monitoring;
-3. publish a signed Windows browser/WebDriver ZIP through the protected artifact route
-   and qualify a clean-machine install/update/rollback;
+3. publish signed browser/WebDriver ZIPs for the launch targets: Windows x64, Linux
+   x64/Docker and macOS x64/arm64, then qualify clean-machine install/update/rollback;
 4. connect verified PayNow webhooks and reconcile billing state to entitlements;
 5. load-test simultaneous N/N+1 reservation and heartbeat behavior at intended scale;
 6. use PostgreSQL or another shared transactional authority before multiple service
    nodes—independent SQLite replicas are forbidden; and
 7. complete production key-rotation, revocation, disaster-recovery and incident drills.
 
-Free and Launch can be staged first, but the configured limits and prices must stay
-identical across website, checkout, account UI, authorization service and documentation.
-Fleet and Grid should not be publicly promised until the production topology has passed
-multi-node capacity and artifact-delivery load tests.
+Free, Launch, Studio, Fleet and Grid are the canonical self-serve plan set, but the
+configured limits and prices must stay identical across website, checkout, account UI,
+authorization service and documentation. Fleet and Grid still require multi-node
+capacity and artifact-delivery load evidence before their public checkout links are
+enabled at scale.

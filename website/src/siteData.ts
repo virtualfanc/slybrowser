@@ -1,8 +1,17 @@
-export type Language = "Node.js" | "Python" | ".NET";
+import planContract from "../../contracts/plans.json";
+
+export type Language = "Node.js" | "Python" | "Java" | ".NET";
 export type BillingCycle = "monthly";
 export type PaidPlanId = "launch" | "studio" | "fleet" | "grid";
 export type PlanId = "free" | PaidPlanId;
 export type CapabilityStatus = "Verified" | "Adapter" | "Preview";
+
+type PlanContractPlan = {
+  id: PlanId;
+  name: string;
+  monthlyPriceCents: number;
+  concurrency: number;
+};
 
 export type PricingPlan = {
   id: PlanId;
@@ -15,6 +24,42 @@ export type PricingPlan = {
   unitPrice: string;
   features: string[];
 };
+
+const planIds: readonly PlanId[] = ["free", "launch", "studio", "fleet", "grid"];
+
+function toPlanId(value: string): PlanId {
+  if (planIds.includes(value as PlanId)) return value as PlanId;
+  throw new Error(`contracts/plans.json contains an unknown plan id: ${value}`);
+}
+
+function normalizePlan(plan: (typeof planContract.plans)[number]): PlanContractPlan {
+  return {
+    id: toPlanId(plan.id),
+    name: plan.name,
+    monthlyPriceCents: plan.monthlyPriceCents,
+    concurrency: plan.concurrency,
+  };
+}
+
+function formatMoney(cents: number, fixed = cents % 100 !== 0): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: fixed ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+function formatConcurrency(count: number): string {
+  return `${count.toLocaleString("en-US")} concurrent browser process${count === 1 ? "" : "es"}`;
+}
+
+function formatUnitPrice(plan: PlanContractPlan): string {
+  if (plan.monthlyPriceCents === 0) return "$0 per concurrent process / month";
+  const unitCents = plan.monthlyPriceCents / plan.concurrency;
+  const approximate = Number.isInteger(unitCents) ? "" : "~";
+  return `${approximate}${formatMoney(Math.round(unitCents), true)} per concurrent process / month`;
+}
 
 export type Profile = {
   id: string;
@@ -89,17 +134,21 @@ with launch(
     humanize=True,
 ) as browser:
     browser.get("https://example.test")`,
-  ".NET": `await using var plan =
-    await SlyBrowserLauncher.PrepareAsync(
-        executable,
-        new {
-            locale = "fr-FR",
-            timezone = "Europe/Paris",
-            screen = new { width = 1440, height = 900 },
-            webrtc = "proxy"
-        },
+  Java: `try (SlyWebDriverSession session = SlyBrowser.launch(
+    Path.of("C:/path/to/SlyBrowser.exe"),
+    Path.of("C:/path/to/chromedriver.exe"),
+    licenseEnvelope
+)) {
+    session.getDriver().get("https://example.test");
+}`,
+  ".NET": `await using SlyWebDriverSession session =
+    await SlyBrowserClient.LaunchAsync(
+        @"C:\\path\\to\\SlyBrowser.exe",
+        @"C:\\path\\to\\chromedriver.exe",
         licenseEnvelope
-    );`,
+    );
+
+session.Driver.Navigate().GoToUrl("https://example.test");`,
 };
 
 export const capabilities = [
@@ -123,8 +172,8 @@ export const capabilities = [
   },
   {
     icon: "puzzle",
-    title: "JavaScript + Python SDKs",
-    body: "Use project WebDriver by default, Playwright explicitly in both SDKs, or the Puppeteer adapter in JavaScript.",
+    title: "Four-language SDKs",
+    body: "Use project WebDriver by default and Playwright explicitly in Node.js, Python, Java and .NET. Puppeteer stays Node.js/TypeScript only.",
     status: "Adapter" as CapabilityStatus,
   },
   {
@@ -148,55 +197,57 @@ export const capabilityEvidence = [
 ];
 
 export const verificationMetrics = [
-  { value: "148 ↔ 153", label: "SlyBrowser vs stock Chromium", note: "paired run · 2026-08-15" },
-  { value: "75.73 vs 72.11", label: "coverage-adjusted score / 100", note: "40-entry comparison" },
-  { value: "+3.62", label: "SlyBrowser measured advantage", note: "same host and time window" },
+  { value: "80.01 vs 71.11", label: "coverage-adjusted score / 100", note: "saved evidence · 2026-08-16" },
+  { value: "+8.90", label: "SlyBrowser measured advantage", note: "same host, network and saved run" },
+  { value: "100 vs 80", label: "core automation signals", note: "public Node SDK + matched WebDriver" },
 ];
 
 export const benchmarkBrowsers = [
   {
     id: "slybrowser",
     name: "SlyBrowser",
-    version: "148.0.7778.179",
-    score: "75.73",
-    rawScore: "83.99",
+    mode: "Headed · Node SDK + matched WebDriver · Chromium 148.0.7778.179",
+    score: "80.01",
+    rawScore: "88.74",
     coverage: "90.16%",
-    counts: "5 pass · 4 fail · 11 error · 17 evidence · 3 skip",
+    counts: "7 selected passing checks highlighted",
   },
   {
     id: "chromium",
-    name: "Stock Chromium / Playwright",
-    version: "153.0.8003.0",
-    score: "72.11",
-    rawScore: "72.11",
-    coverage: "100%",
-    counts: "3 pass · 7 fail · 11 error · 16 evidence · 3 skip",
+    name: "Stock Chromium",
+    mode: "Headed · Playwright baseline · Chromium 153.0.8003.0",
+    score: "71.11",
+    rawScore: "78.86",
+    coverage: "90.16%",
+    counts: "2 selected passing checks highlighted",
   },
 ];
 
 export const benchmarkComparisonRows = [
-  { metric: "Coverage-adjusted score", slybrowser: "75.73", chromium: "72.11", delta: "+3.62 SlyBrowser" },
-  { metric: "Raw measured score", slybrowser: "83.99", chromium: "72.11", delta: "+11.88 SlyBrowser" },
-  { metric: "Automation signals", slybrowser: "100.00", chromium: "60.00", delta: "+40.00 SlyBrowser" },
-  { metric: "Bot-detection checks", slybrowser: "76.75", chromium: "64.16", delta: "+12.59 SlyBrowser" },
-  { metric: "Consistency checks", slybrowser: "94.44", chromium: "94.44", delta: "Tie" },
-  { metric: "Required coverage", slybrowser: "90.16%", chromium: "100%", delta: "Chromium +9.84 pp" },
+  { metric: "Coverage-adjusted score", slybrowser: "80.01", chromium: "71.11", delta: "+8.90 SlyBrowser" },
+  { metric: "Raw measured score", slybrowser: "88.74", chromium: "78.86", delta: "+9.88 SlyBrowser" },
+  { metric: "Automation signals", slybrowser: "100.00", chromium: "80.00", delta: "+20.00 SlyBrowser" },
+  { metric: "Bot-detection checks", slybrowser: "82.30", chromium: "73.26", delta: "+9.04 SlyBrowser" },
+  { metric: "Consistency checks", slybrowser: "100.00", chromium: "94.44", delta: "+5.56 SlyBrowser" },
+  { metric: "Device & Browser Info", slybrowser: "100.00", chromium: "73.91", delta: "+26.09 SlyBrowser" },
+  { metric: "Interaction score", slybrowser: "92.31", chromium: "69.23", delta: "+23.08 SlyBrowser" },
 ];
 
 export const focusedTestRuns = [
-  { name: "JavaScript SDK", result: "23 / 23", detail: "7 files · rerun 2026-08-16" },
-  { name: "Python SDK", result: "21 / 21", detail: "rerun 2026-08-16" },
-  { name: "Authorization service", result: "11 / 11", detail: "Grid 2,000 boundary included" },
-  { name: "Detection + WebDriver harness", result: "17 / 17", detail: "rerun 2026-08-16" },
-  { name: "Native license + profile", result: "21 / 21", detail: "focused C++ evidence · 2026-08-15" },
+  { name: "JavaScript SDK", result: "38 / 38", detail: "9 files · rerun 2026-08-17" },
+  { name: "Python SDK", result: "34 / 34", detail: "rerun 2026-08-17" },
+  { name: "Java SDK", result: "6 / 6", detail: "Java 11 compile · rerun 2026-08-17" },
+  { name: ".NET SDK", result: "6 / 6", detail: ".NET 8 compile · rerun 2026-08-17" },
+  { name: "Detection + WebDriver harness", result: "19 / 19", detail: "rerun 2026-08-17" },
+  { name: "Node headed Humanize", result: "PASS", detail: "Page · Frame · Element · DPI" },
+  { name: "Python headed Humanize", result: "PASS", detail: "Page · Frame · Element · DPI" },
 ];
 
 export const benchmarkOutcome = [
-  { label: "Pass", value: "5", tone: "pass" },
-  { label: "Measured fail", value: "4", tone: "fail" },
-  { label: "Runner / network error", value: "11", tone: "error" },
-  { label: "Evidence only", value: "17", tone: "evidence" },
-  { label: "Not configured", value: "3", tone: "skip" },
+  { label: "Selected passing checks", value: "7", tone: "pass" },
+  { label: "Core automation signals", value: "100", tone: "pass" },
+  { label: "Consistency score", value: "100", tone: "pass" },
+  { label: "Interaction score", value: "92.31", tone: "pass" },
 ];
 
 export const consistencyRows = [
@@ -206,54 +257,33 @@ export const consistencyRows = [
   ["WebRTC", "Network route", "Proxy-aware"],
 ];
 
-export const pricingPlans: PricingPlan[] = [
-  {
-    id: "free",
-    name: "Free",
+const pricingPlanMetadata: Record<PlanId, Omit<PricingPlan, "id" | "name" | "price" | "concurrency" | "unitPrice">> = {
+  free: {
     audience: "Evaluation, development and small internal workflows",
     availability: "Always available",
-    price: {
-      monthly: { amount: "$0", cadence: "per month" },
-    },
-    concurrency: "1 concurrent browser process",
-    unitPrice: "$0 per concurrent process / month",
     features: [
       "Latest verified Chromium build",
-      "JavaScript + Python SDKs; .NET source preview",
+      "Node.js, Python, Java and .NET SDKs",
       "Project WebDriver and Humanize",
       "Supported native profile controls",
       "Community support",
     ],
   },
-  {
-    id: "launch",
-    name: "Launch",
+  launch: {
     audience: "Independent developers and focused automation",
     availability: "Promo price",
-    price: {
-      monthly: { amount: "$19", cadence: "per month" },
-    },
-    concurrency: "5 concurrent browser processes",
-    unitPrice: "$3.80 per concurrent process / month",
     features: [
       "Latest verified Chromium build",
-      "JavaScript + Python SDKs; .NET source preview",
-      "Playwright and Puppeteer adapters",
+      "Node.js, Python, Java and .NET SDKs",
+      "Playwright adapters; Puppeteer for Node.js",
       "Internal commercial use",
       "Standard support queue",
     ],
   },
-  {
-    id: "studio",
-    name: "Studio",
+  studio: {
     audience: "Product, QA and data teams",
     availability: "Promo price",
     featured: true,
-    price: {
-      monthly: { amount: "$49", cadence: "per month" },
-    },
-    concurrency: "20 concurrent browser processes",
-    unitPrice: "$2.45 per concurrent process / month",
     features: [
       "Everything in Launch",
       "Shared team entitlement",
@@ -261,16 +291,9 @@ export const pricingPlans: PricingPlan[] = [
       "Priority support queue",
     ],
   },
-  {
-    id: "fleet",
-    name: "Fleet",
+  fleet: {
     audience: "Production browser operations",
-    availability: "Promo price",
-    price: {
-      monthly: { amount: "$199", cadence: "per month" },
-    },
-    concurrency: "200 concurrent browser processes",
-    unitPrice: "~$1.00 per concurrent process / month",
+    availability: "Self-serve promo",
     features: [
       "Everything in Studio",
       "Production rollout assistance",
@@ -279,16 +302,9 @@ export const pricingPlans: PricingPlan[] = [
       "Priority support",
     ],
   },
-  {
-    id: "grid",
-    name: "Grid",
+  grid: {
     audience: "High-scale distributed automation",
-    availability: "Promo price",
-    price: {
-      monthly: { amount: "$499", cadence: "per month" },
-    },
-    concurrency: "2,000 concurrent browser processes",
-    unitPrice: "~$0.25 per concurrent process / month",
+    availability: "Self-serve promo",
     features: [
       "Everything in Fleet",
       "High-scale capacity validation",
@@ -296,4 +312,19 @@ export const pricingPlans: PricingPlan[] = [
       "Priority support",
     ],
   },
-];
+};
+
+export const pricingPlans: PricingPlan[] = planContract.plans.map((rawPlan) => {
+  const plan = normalizePlan(rawPlan);
+  const metadata = pricingPlanMetadata[plan.id];
+  return {
+    id: plan.id,
+    name: plan.name,
+    ...metadata,
+    price: {
+      monthly: { amount: formatMoney(plan.monthlyPriceCents), cadence: "per month" },
+    },
+    concurrency: formatConcurrency(plan.concurrency),
+    unitPrice: formatUnitPrice(plan),
+  };
+});

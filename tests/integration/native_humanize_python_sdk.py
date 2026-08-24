@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import quote
 
+from slybrowser.licensed import launch_authorized
 from slybrowser.webdriver import SlyWebDriverService
 
 
@@ -20,21 +24,71 @@ def main() -> None:
     parser.add_argument("--browser", required=True)
     parser.add_argument("--driver", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--license")
+    parser.add_argument("--authorization-file")
+    parser.add_argument("--cache-root")
+    parser.add_argument("--license-key-id")
+    parser.add_argument("--license-public-key-hex")
+    parser.add_argument("--release-key-id")
+    parser.add_argument("--release-public-key-base64url")
     parser.add_argument("--headed", action="store_true")
     options = parser.parse_args()
+    if options.authorization_file:
+        for name in (
+            "cache_root",
+            "license_key_id",
+            "license_public_key_hex",
+            "release_key_id",
+            "release_public_key_base64url",
+        ):
+            if getattr(options, name) is None:
+                raise ValueError(f"--{name.replace('_', '-')} is required with --authorization-file")
+    elif not options.license:
+        raise ValueError("--license is required unless --authorization-file is used")
     started = time.perf_counter()
-    service = SlyWebDriverService.start(options.driver, command_timeout=3)
+    handoff = tempfile.TemporaryDirectory(prefix="sly-python-humanize-")
+    service = None
     session = None
     try:
-        session = service.create_session(
-            options.browser,
-            arguments=("--force-device-scale-factor=1.5",),
-            headless=not options.headed,
-            viewport=(800, 600),
-            humanize=True,
-            human_preset="careful",
-            human_seed=42424,
-        )
+        if options.authorization_file:
+            session = launch_authorized(
+                options.authorization_file,
+                license_trusted_keys={options.license_key_id: bytes.fromhex(options.license_public_key_hex)},
+                release_trusted_keys={
+                    options.release_key_id: base64url_decode(options.release_public_key_base64url)
+                },
+                cache_root=options.cache_root,
+                platform="windows",
+                arch="x64",
+                update_kernel=False,
+                arguments=("--force-device-scale-factor=1.5",),
+                headless=not options.headed,
+                viewport=(800, 600),
+                humanize=True,
+                human_preset="careful",
+                human_seed=42424,
+                native_ready=True,
+            )
+        else:
+            lease = Path(options.license).resolve().read_bytes()
+            if not 1 <= len(lease) <= 65_536:
+                raise ValueError("Signed test lease must contain between 1 and 65536 bytes")
+            browser_license = Path(handoff.name, "browser-license.json")
+            driver_license = Path(handoff.name, "driver-license.json")
+            browser_license.write_bytes(lease)
+            driver_license.write_bytes(lease)
+            protect_windows_handoff_file(browser_license)
+            protect_windows_handoff_file(driver_license)
+            service = SlyWebDriverService.start(options.driver, command_timeout=3, license_file=driver_license)
+            session = service.create_session(
+                options.browser,
+                arguments=(f"--sly-license-file={browser_license}", "--force-device-scale-factor=1.5"),
+                headless=not options.headed,
+                viewport=(800, 600),
+                humanize=True,
+                human_preset="careful",
+                human_seed=42424,
+            )
         session.set_timeouts(script=3_000, page_load=10_000, implicit=0)
         session.get(data_url("""
           <input id="name" style="position:absolute;left:40px;top:40px;width:240px;height:40px" onclick="window.inputClicks=(window.inputClicks||0)+1">
@@ -79,13 +133,25 @@ def main() -> None:
 
         assert isinstance(geometry, dict)
         consistent = all(abs(geometry["bounding"][name] - geometry["client"][name]) <= 0.01 for name in ("x", "y", "width", "height"))
-        if not consistent or geometry["dpr"] != 1.5 or geometry["clicked"] != 1 or geometry["inputClicks"] != 0 or geometry["typed"] != "python-humanize" or frame_clicked != 1:
+        checks = {
+            "page": True,
+            "frame": frame_clicked == 1,
+            "elementClick": geometry["clicked"] == 1,
+            "elementType": geometry["typed"] == "python-humanize",
+            "noPreparatoryClickForTyping": geometry["inputClicks"] == 0,
+            "dpi": geometry["dpr"] == 1.5,
+            "geometry": consistent,
+        }
+        score = sum(1 for passed in checks.values() if passed) / len(checks) * 100
+        if score != 100:
             raise AssertionError(f"Python SDK Humanize matrix mismatch: {geometry!r}, frame_clicked={frame_clicked!r}")
 
         report = {
             "schemaVersion": 1,
             "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "status": "PASS",
+            "score": score,
+            "checks": checks,
             "runtime": {"python": platform.python_version(), "implementation": platform.python_implementation(), "platform": sys.platform},
             "matrix": {"sdk": "python", "headed": options.headed, "page": True, "frame": True, "elementClick": True, "elementType": True, "dpi": 1.5, "commandTimeoutMs": 3_000},
             "geometry": geometry,
@@ -100,8 +166,30 @@ def main() -> None:
     finally:
         if session is not None:
             session.close()
-        else:
+        elif service is not None:
             service.close()
+        handoff.cleanup()
+
+
+def protect_windows_handoff_file(path: Path) -> None:
+    if os.name != "nt":
+        return
+    identity = subprocess.check_output(["whoami"], text=True, stderr=subprocess.DEVNULL).strip()
+    if not identity:
+        raise RuntimeError("Unable to determine current Windows identity for handoff ACL")
+    subprocess.run(
+        ["icacls", str(path), "/inheritance:r", "/grant:r", f"{identity}:(F)"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def base64url_decode(value: str) -> bytes:
+    import base64
+
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
 
 
 if __name__ == "__main__":

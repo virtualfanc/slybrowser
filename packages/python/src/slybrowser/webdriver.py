@@ -17,10 +17,60 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .errors import ConfigurationError, WebDriverError
-from .launcher import prepare_launch
+from .launcher import prepare_launch, wait_for_native_ready
 
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 DEFAULT_EXCLUDED_SWITCHES = ("enable-automation", "enable-unsafe-swiftshader")
+
+
+def _json_object(value: object) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _parse_signed_lease_claims(lease: str | bytes | Mapping[str, Any]) -> Mapping[str, Any] | None:
+    import base64
+
+    envelope: object
+    try:
+        if isinstance(lease, Mapping):
+            envelope = lease
+        elif isinstance(lease, bytes):
+            envelope = json.loads(lease.decode("utf-8"))
+        else:
+            envelope = json.loads(lease)
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return None
+    payload = _json_object(envelope).get("payload") if _json_object(envelope) is not None else None
+    if not isinstance(payload, str) or not payload:
+        return None
+    try:
+        padded = payload + "=" * (-len(payload) % 4)
+        return _json_object(json.loads(base64.urlsafe_b64decode(padded).decode("utf-8")))
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return None
+
+
+def derive_release_root(browser_executable: str | Path, artifact_browser_executable: object) -> Path | None:
+    if not isinstance(artifact_browser_executable, str) or not artifact_browser_executable.strip():
+        return None
+    expected_parts = [part for part in artifact_browser_executable.replace("\\", "/").split("/") if part]
+    if not expected_parts:
+        return None
+    actual_path = Path(browser_executable).expanduser().resolve()
+    actual_parts = [part.lower() for part in actual_path.parts]
+    expected_lower = [part.lower() for part in expected_parts]
+    if len(actual_parts) < len(expected_lower) or actual_parts[-len(expected_lower):] != expected_lower:
+        return None
+    release_root = actual_path
+    for _ in expected_parts:
+        release_root = release_root.parent
+    return release_root
+
+
+def _release_root_from_lease(browser_executable: str | Path, lease: str | bytes | Mapping[str, Any]) -> Path | None:
+    claims = _parse_signed_lease_claims(lease)
+    artifact = _json_object(claims.get("artifact")) if claims is not None else None
+    return derive_release_root(browser_executable, artifact.get("browserExecutable") if artifact is not None else None)
 
 
 def _validate_mobile_persona(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -663,6 +713,8 @@ class SlyWebDriverService:
         start_timeout: float = 15,
         command_timeout: float = 60,
         license_file: str | Path | None = None,
+        runtime_file: str | Path | None = None,
+        release_root: str | Path | None = None,
     ) -> SlyWebDriverService:
         path = Path(executable).expanduser().resolve()
         if not path.is_file():
@@ -678,6 +730,8 @@ class SlyWebDriverService:
                 f"--port={port}",
                 "--log-level=WARNING",
                 *([f"--sly-license-file={Path(license_file).resolve()}"] if license_file is not None else []),
+                *([f"--sly-release-root={Path(release_root).resolve()}"] if release_root is not None else []),
+                *([f"--sly-runtime-file={Path(runtime_file).resolve()}"] if runtime_file is not None else []),
             ],
             stdin=subprocess.DEVNULL,
             stdout=log_file,
@@ -770,9 +824,12 @@ class SlyWebDriverService:
             raise
 
     def close(self) -> None:
+        try:
+            _request_json(self.origin, "GET", "/shutdown", timeout=1)
+        except WebDriverError:
+            pass
         self._connection.close()
         if self._process.poll() is None:
-            self._process.terminate()
             try:
                 self._process.wait(timeout=3)
             except subprocess.TimeoutExpired:
@@ -797,7 +854,13 @@ def launch(
     human_config: Mapping[str, int | float] | None = None,
     human_seed: int | None = None,
     mobile_persona: Mapping[str, Any] | None = None,
+    runtime_handoff: Mapping[str, Any] | None = None,
+    driver_runtime_handoff: Mapping[str, Any] | None = None,
+    allow_runtime_activation_ticket: bool = False,
+    native_ready: bool = False,
+    native_ready_timeout: float = 15.0,
     temp_root: str | Path | None = None,
+    release_root: str | Path | None = None,
     driver_start_timeout: int = 15_000,
     command_timeout: int = 60_000,
 ) -> SlyWebDriverSession:
@@ -808,15 +871,24 @@ def launch(
             "WebDriver timeouts must be at least 1000 milliseconds",
             code="config_invalid",
         )
+    if native_ready and (not isinstance(native_ready_timeout, (int, float)) or native_ready_timeout <= 0):
+        raise ConfigurationError("native_ready_timeout must be positive", code="config_invalid")
     browser_path = Path(executable).expanduser().resolve()
     driver_path = default_driver_executable(browser_path, driver_executable)
+    selected_release_root = Path(release_root).expanduser().resolve() if release_root is not None else _release_root_from_lease(browser_path, lease)
     service: SlyWebDriverService | None = None
     with prepare_launch(
         browser_path,
         _native_profile(profile, mobile_persona),
         lease,
         temp_root=temp_root,
+        release_root=selected_release_root,
         include_driver_lease=True,
+        runtime_handoff=runtime_handoff,
+        driver_runtime_handoff=driver_runtime_handoff,
+        include_driver_runtime=runtime_handoff is not None,
+        allow_runtime_activation_ticket=allow_runtime_activation_ticket,
+        native_ready=native_ready,
     ) as plan:
         try:
             service = SlyWebDriverService.start(
@@ -824,6 +896,8 @@ def launch(
                 start_timeout=driver_start_timeout / 1000,
                 command_timeout=command_timeout / 1000,
                 license_file=plan.driver_license_file,
+                runtime_file=plan.driver_runtime_file,
+                release_root=selected_release_root,
             )
             session = service.create_session(
                 browser_path,
@@ -840,8 +914,14 @@ def launch(
                 human_seed=human_seed,
                 mobile_persona=mobile_persona,
             )
-            session.set_timeouts(script=command_timeout, page_load=command_timeout, implicit=0)
-            return session
+            try:
+                if native_ready:
+                    wait_for_native_ready(plan, timeout=native_ready_timeout)
+                session.set_timeouts(script=command_timeout, page_load=command_timeout, implicit=0)
+                return session
+            except BaseException:
+                session.close()
+                raise
         except BaseException:
             if service is not None:
                 service.close()
