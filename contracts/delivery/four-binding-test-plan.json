@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "public-four-binding-v1",
+  "maximumReceiptAgeSeconds": 86400,
+  "bindingInventory": { "node": "packages/node", "python": "packages/python", "java": "packages/java", "dotnet": "packages/dotnet" },
+  "requiredCases": [
+    {
+      "id": "node:unit", "binding": "node", "level": "unit", "subject": "exact-staged-tree",
+      "command": { "executable": "pnpm", "args": ["--filter", "slybrowser", "test"], "cwd": "." },
+      "requiredAssertions": ["node-unit-suite", "installer-resource-limits"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "node:integration", "binding": "node", "level": "integration", "subject": "shared-contract-and-real-boundary",
+      "command": { "executable": "pnpm", "args": ["--filter", "slybrowser", "test"], "cwd": "." },
+      "requiredAssertions": ["node-integration-suite", "shared-contract-and-installer-boundary"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "node:e2e", "binding": "node", "level": "e2e", "subject": "exact-packaged-browser-driver",
+      "command": { "executable": "powershell", "argsPrefix": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/browser/Test-NativeHumanizeSdkMatrix.ps1"], "requiredOptions": ["-BrowserExecutable", "-DriverExecutable", "-OutputDirectory"], "requiredOptionSets": [["-AuthorizationFile", "-CacheRoot", "-LicenseKeyId", "-LicensePublicKeyHex", "-ReleaseKeyId", "-ReleasePublicKeyBase64url", "-TrustedServiceUrl", "-CanaryAuthorizationFile", "-CanaryCacheRoot", "-CanaryTrustedServiceUrl"]], "cwd": "." },
+      "requiredAssertions": ["node-exact-package-launch", "browser-driver-hash-pairing"], "negativeCanary": "reject-mismatched-browser-driver"
+    },
+    {
+      "id": "python:unit", "binding": "python", "level": "unit", "subject": "exact-staged-tree",
+      "command": { "executable": "python", "args": ["-m", "pytest", "packages/python/tests", "-vv"], "cwd": "." },
+      "requiredAssertions": ["python-unit-suite", "installer-resource-limits"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "python:integration", "binding": "python", "level": "integration", "subject": "shared-contract-and-real-boundary",
+      "command": { "executable": "python", "args": ["-m", "pytest", "packages/python/tests", "-vv"], "cwd": "." },
+      "requiredAssertions": ["python-integration-suite", "shared-contract-and-installer-boundary"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "python:e2e", "binding": "python", "level": "e2e", "subject": "exact-packaged-browser-driver",
+      "command": { "executable": "powershell", "argsPrefix": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/browser/Test-NativeHumanizeSdkMatrix.ps1"], "requiredOptions": ["-BrowserExecutable", "-DriverExecutable", "-OutputDirectory"], "requiredOptionSets": [["-AuthorizationFile", "-CacheRoot", "-LicenseKeyId", "-LicensePublicKeyHex", "-ReleaseKeyId", "-ReleasePublicKeyBase64url", "-TrustedServiceUrl", "-CanaryAuthorizationFile", "-CanaryCacheRoot", "-CanaryTrustedServiceUrl"]], "cwd": "." },
+      "requiredAssertions": ["python-exact-package-launch", "browser-driver-hash-pairing"], "negativeCanary": "reject-mismatched-browser-driver"
+    },
+    {
+      "id": "java:unit", "binding": "java", "level": "unit", "subject": "exact-staged-tree",
+      "command": { "executable": "mvn", "args": ["test"], "cwd": "packages/java" },
+      "requiredAssertions": ["java-unit-suite", "installer-resource-limits"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "java:integration", "binding": "java", "level": "integration", "subject": "shared-contract-and-real-boundary",
+      "command": { "executable": "mvn", "args": ["test"], "cwd": "packages/java" },
+      "requiredAssertions": ["java-integration-suite", "shared-contract-and-installer-boundary"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "java:e2e", "binding": "java", "level": "e2e", "subject": "exact-packaged-browser-driver",
+      "command": { "executable": "powershell", "argsPrefix": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/browser/Test-NativeHumanizeSdkMatrix.ps1"], "requiredOptions": ["-BrowserExecutable", "-DriverExecutable", "-OutputDirectory"], "requiredOptionSets": [["-AuthorizationFile", "-CacheRoot", "-LicenseKeyId", "-LicensePublicKeyHex", "-ReleaseKeyId", "-ReleasePublicKeyBase64url", "-TrustedServiceUrl", "-CanaryAuthorizationFile", "-CanaryCacheRoot", "-CanaryTrustedServiceUrl"]], "cwd": "." },
+      "requiredAssertions": ["java-exact-package-launch", "browser-driver-hash-pairing"], "negativeCanary": "reject-mismatched-browser-driver"
+    },
+    {
+      "id": "dotnet:unit", "binding": "dotnet", "level": "unit", "subject": "exact-staged-tree",
+      "command": { "executable": "dotnet", "args": ["test", "packages/dotnet/tests/SlyBrowser.Tests/SlyBrowser.Tests.csproj", "--configuration", "Release"], "cwd": "." },
+      "requiredAssertions": ["dotnet-unit-suite", "installer-resource-limits"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "dotnet:integration", "binding": "dotnet", "level": "integration", "subject": "shared-contract-and-real-boundary",
+      "command": { "executable": "dotnet", "args": ["test", "packages/dotnet/tests/SlyBrowser.Tests/SlyBrowser.Tests.csproj", "--configuration", "Release"], "cwd": "." },
+      "requiredAssertions": ["dotnet-integration-suite", "shared-contract-and-installer-boundary"], "negativeCanary": "reject-unsafe-or-oversized-archive"
+    },
+    {
+      "id": "dotnet:e2e", "binding": "dotnet", "level": "e2e", "subject": "exact-packaged-browser-driver",
+      "command": { "executable": "powershell", "argsPrefix": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/browser/Test-NativeHumanizeSdkMatrix.ps1"], "requiredOptions": ["-BrowserExecutable", "-DriverExecutable", "-OutputDirectory"], "requiredOptionSets": [["-AuthorizationFile", "-CacheRoot", "-LicenseKeyId", "-LicensePublicKeyHex", "-ReleaseKeyId", "-ReleasePublicKeyBase64url", "-TrustedServiceUrl", "-CanaryAuthorizationFile", "-CanaryCacheRoot", "-CanaryTrustedServiceUrl"]], "cwd": "." },
+      "requiredAssertions": ["dotnet-exact-package-launch", "browser-driver-hash-pairing"], "negativeCanary": "reject-mismatched-browser-driver"
+    }
+  ],
+  "requiredStatus": "pass",
+  "forbiddenRequiredStatuses": ["fail", "blocked", "not_evaluated", "skip"],
+  "e2eAuthenticity": "A real E2E receipt must identify the exact packaged SlyBrowser and paired Sly WebDriver. Fixture, source-only, stock-browser, system-Driver, or unavailable-runtime results cannot satisfy an E2E case."
+}

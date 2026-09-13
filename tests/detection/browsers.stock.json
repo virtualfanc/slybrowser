@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "browsers": [
+    {
+      "id": "stock-playwright",
+      "name": "Stock Chromium baseline",
+      "executable": "${STOCK_CHROMIUM_EXE}",
+      "headless": false,
+      "args": [
+        "--no-first-run",
+        "--no-default-browser-check"
+      ]
+    }
+  ]
+}

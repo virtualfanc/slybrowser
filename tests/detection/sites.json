@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "sites": [
+    { "id": "local-core-signals", "name": "Core automation signals", "category": "automation", "url": "local:probe", "adapter": "core", "waitMs": 500, "grading": true, "required": true, "weight": 8 },
+    { "id": "local-context-consistency", "name": "Window, iframe and worker consistency", "category": "consistency", "url": "local:probe", "adapter": "contexts", "waitMs": 500, "grading": true, "required": true, "weight": 8 },
+    { "id": "local-render-stability", "name": "Canvas and WebGL stability", "category": "consistency", "url": "local:probe", "adapter": "render-stability", "waitMs": 500, "grading": true, "required": true, "weight": 4 },
+
+    { "id": "sannysoft", "name": "Sannysoft bot test", "category": "bot-detection", "url": "https://bot.sannysoft.com/", "adapter": "sannysoft", "waitMs": 4000, "grading": true, "required": true, "weight": 5 },
+    { "id": "incolumitas", "name": "Incolumitas bot test", "category": "bot-detection", "url": "https://bot.incolumitas.com/", "adapter": "incolumitas", "waitMs": 16000, "grading": true, "required": true, "weight": 7 },
+    { "id": "browserscan", "name": "BrowserScan bot detection", "category": "bot-detection", "url": "https://www.browserscan.net/bot-detection", "adapter": "browserscan", "waitMs": 7000, "grading": true, "required": true, "weight": 6 },
+    { "id": "device-browser-info", "name": "Device & Browser Info bot test", "category": "bot-detection", "url": "https://deviceandbrowserinfo.com/are_you_a_bot", "adapter": "device-info", "waitMs": 10000, "grading": true, "required": true, "weight": 7 },
+    { "id": "device-browser-interactions", "name": "Device & Browser Info interaction test", "category": "behavior", "url": "https://deviceandbrowserinfo.com/are_you_a_bot_interactions", "adapter": "device-interactions", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "fingerprint-web-scraping", "name": "Fingerprint web-scraping demo", "category": "bot-detection", "url": "https://demo.fingerprint.com/web-scraping", "adapter": "fingerprint-demo", "waitMs": 9000, "grading": true, "required": true, "weight": 6 },
+    { "id": "fingerprint-oss", "name": "FingerprintJS OSS demo", "category": "fingerprint", "url": "https://fingerprintjs.github.io/fingerprintjs/", "adapter": "generic", "waitMs": 6000, "grading": false, "required": false, "weight": 0 },
+
+    { "id": "recaptcha-v3-demo", "name": "reCAPTCHA v3 public score demo", "category": "challenge", "url": "https://recaptcha-demo.appspot.com/recaptcha-v3-request-scores.php", "adapter": "recaptcha-v3", "waitMs": 10000, "grading": true, "required": true, "weight": 6, "threshold": 0.7 },
+    { "id": "turnstile-visible-test-key", "name": "Turnstile visible functional test", "category": "challenge", "url": "local:turnstile-visible", "adapter": "turnstile", "waitMs": 8000, "grading": false, "required": false, "weight": 0 },
+    { "id": "turnstile-invisible-test-key", "name": "Turnstile invisible functional test", "category": "challenge", "url": "local:turnstile-invisible", "adapter": "turnstile", "waitMs": 8000, "grading": false, "required": false, "weight": 0 },
+    { "id": "turnstile-noninteractive-authorized", "name": "Turnstile non-interactive authorized test", "category": "challenge", "urlEnv": "SLY_TEST_TURNSTILE_NONINTERACTIVE_URL", "adapter": "configured-verdict", "waitMs": 12000, "grading": true, "required": false, "weight": 6, "passPatterns": ["verified", "success", "passed"], "failPatterns": ["blocked", "failed", "challenge required"] },
+    { "id": "turnstile-managed-authorized", "name": "Turnstile managed authorized test", "category": "challenge", "urlEnv": "SLY_TEST_TURNSTILE_MANAGED_URL", "adapter": "configured-verdict", "waitMs": 15000, "grading": true, "required": false, "weight": 6, "passPatterns": ["verified", "success", "passed"], "failPatterns": ["blocked", "failed"] },
+    { "id": "shieldsquare-authorized", "name": "ShieldSquare authorized production test", "category": "challenge", "urlEnv": "SLY_TEST_SHIELDSQUARE_URL", "adapter": "configured-verdict", "waitMs": 12000, "grading": true, "required": false, "weight": 5, "passPatterns": ["authorized-test-pass"], "failPatterns": ["access denied", "blocked", "captcha"] },
+
+    { "id": "pixelscan", "name": "Pixelscan", "category": "fingerprint", "url": "https://pixelscan.net/", "adapter": "generic", "waitMs": 12000, "grading": false, "required": false, "weight": 0 },
+    { "id": "creepjs-official", "name": "CreepJS official deployment", "category": "fingerprint", "url": "https://abrahamjuliot.github.io/creepjs/", "adapter": "generic", "waitMs": 15000, "grading": false, "required": false, "weight": 0 },
+    { "id": "amiunique", "name": "AmIUnique fingerprint", "category": "fingerprint", "url": "https://amiunique.org/fingerprint", "adapter": "generic", "waitMs": 10000, "grading": false, "required": false, "weight": 0 },
+    { "id": "deviceinfo", "name": "DeviceInfo", "category": "fingerprint", "url": "https://www.deviceinfo.me/", "adapter": "generic", "waitMs": 8000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-javascript", "name": "BrowserLeaks JavaScript", "category": "fingerprint", "url": "https://browserleaks.com/javascript", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-canvas", "name": "BrowserLeaks Canvas", "category": "fingerprint", "url": "https://browserleaks.com/canvas", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-webgl", "name": "BrowserLeaks WebGL", "category": "fingerprint", "url": "https://browserleaks.com/webgl", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-audio", "name": "BrowserLeaks Audio", "category": "fingerprint", "url": "https://browserleaks.com/audio", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-fonts", "name": "BrowserLeaks Fonts", "category": "fingerprint", "url": "https://browserleaks.com/fonts", "adapter": "generic", "waitMs": 7000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-webrtc", "name": "BrowserLeaks WebRTC", "category": "network", "url": "https://browserleaks.com/webrtc", "adapter": "generic", "waitMs": 7000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-client-hints", "name": "BrowserLeaks Client Hints", "category": "headers", "url": "https://browserleaks.com/client-hints", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-tls", "name": "BrowserLeaks TLS", "category": "tls", "url": "https://browserleaks.com/ssl", "adapter": "generic", "waitMs": 7000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-proxy", "name": "BrowserLeaks Proxy", "category": "network", "url": "https://browserleaks.com/proxy", "adapter": "generic", "waitMs": 7000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-features", "name": "BrowserLeaks Features", "category": "fingerprint", "url": "https://browserleaks.com/features", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browserleaks-webgpu", "name": "BrowserLeaks WebGPU", "category": "fingerprint", "url": "https://browserleaks.com/webgpu", "adapter": "generic", "waitMs": 7000, "grading": false, "required": false, "weight": 0 },
+
+    { "id": "tls-peet", "name": "Peet TLS and HTTP/2 fingerprint", "category": "tls", "url": "https://tls.peet.ws/api/all", "adapter": "tls-json", "waitMs": 1000, "grading": false, "required": false, "weight": 0 },
+    { "id": "httpbin-headers", "name": "HTTPBin request headers", "category": "headers", "url": "https://httpbin.org/headers", "adapter": "json", "waitMs": 1000, "grading": false, "required": false, "weight": 0 },
+    { "id": "iphey", "name": "IPHey consistency", "category": "network", "url": "https://iphey.com/", "adapter": "generic", "waitMs": 10000, "grading": false, "required": false, "weight": 0 },
+    { "id": "whoer", "name": "Whoer anonymity test", "category": "network", "url": "https://whoer.net/", "adapter": "generic", "waitMs": 10000, "grading": false, "required": false, "weight": 0 },
+    { "id": "coveryourtracks", "name": "EFF Cover Your Tracks", "category": "fingerprint", "url": "https://coveryourtracks.eff.org/", "adapter": "generic", "waitMs": 8000, "grading": false, "required": false, "weight": 0 },
+    { "id": "browseraudit", "name": "BrowserAudit", "category": "standards", "url": "https://browseraudit.com/", "adapter": "generic", "waitMs": 7000, "grading": false, "required": false, "weight": 0 },
+    { "id": "areyouheadless", "name": "Are You Headless", "category": "bot-detection", "url": "https://arh.antoinevastel.com/bots/areyouheadless", "adapter": "generic", "waitMs": 5000, "grading": false, "required": false, "weight": 0 },
+    { "id": "intoli-headless", "name": "Intoli headless test", "category": "bot-detection", "url": "https://intoli.com/blog/not-possible-to-block-chrome-headless/chrome-headless-test.html", "adapter": "sannysoft", "waitMs": 5000, "grading": true, "required": true, "weight": 4 },
+    { "id": "rebrowser-detector", "name": "Rebrowser bot detector", "category": "bot-detection", "url": "https://rebrowser.net/bot-detector", "adapter": "generic", "waitMs": 8000, "grading": false, "required": false, "weight": 0 }
+  ]
+}

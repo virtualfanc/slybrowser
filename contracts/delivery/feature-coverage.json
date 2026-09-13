@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "id": "active-public-feature-coverage-v1",
+  "externalReceiptRule": "External surfaces require a fresh same-candidate receipt only when the feature is affected. Local preparation never implies remote publication or deployment.",
+  "externalCommitRequired": ["officialWebsiteSource"],
+  "featurePathRules": [
+    { "patterns": ["contracts/sdk-packages.json", "packages/node/**", "packages/python/**", "packages/java/**", "packages/dotnet/**"], "featureIds": ["installation-and-sdk-bindings"] },
+    { "patterns": ["contracts/release-manifest.schema.json", "contracts/license-authorization.schema.json", "scripts/release/**"], "featureIds": ["authorized-release-delivery", "browser-webdriver-pairing"] },
+    { "patterns": ["contracts/launch-options.schema.json"], "featureIds": ["profile-configuration", "network-and-proxy-boundaries"] },
+    { "patterns": ["contracts/automation-backends.json", "contracts/automation-backends.schema.json"], "featureIds": ["native-humanize", "automation-backends", "detection-qa"] },
+    { "patterns": ["contracts/plans.json", "contracts/license-lease.schema.json"], "featureIds": ["plans-and-licensing"] },
+    { "patterns": ["contracts/error-codes.json", "contracts/error-codes.schema.json"], "featureIds": ["error-contract-and-troubleshooting"] },
+    { "patterns": ["packages/node/src/errors.ts", "packages/python/src/slybrowser/errors.py", "packages/java/src/main/java/com/slybrowser/ErrorCodes.java", "packages/dotnet/src/SlyBrowser/ErrorCodes.cs"], "featureIds": ["error-contract-and-troubleshooting"] },
+    { "patterns": ["contracts/platform-support.json"], "featureIds": ["platform-support"] },
+    { "patterns": ["scripts/browser/**"], "featureIds": ["browser-webdriver-pairing", "native-humanize", "platform-support", "detection-qa"] }
+  ],
+  "features": [
+    {
+      "id": "installation-and-sdk-bindings",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/sdk-packages.json"],
+        "readme": ["README.md", "packages/node/README.md", "packages/python/README.md", "packages/java/README.md", "packages/dotnet/README.md"],
+        "api": ["packages/node/README.md", "packages/python/README.md", "packages/java/README.md", "packages/dotnet/README.md"],
+        "configuration": ["README.md"],
+        "examples": ["README.md", "packages/node/README.md", "packages/python/README.md", "packages/java/README.md", "packages/dotnet/README.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Installation-and-SDKs.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "authorized-release-delivery",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/release-manifest.schema.json", "contracts/license-authorization.schema.json"],
+        "readme": ["README.md"],
+        "api": ["docs/authorized-release-service.md"],
+        "configuration": ["docs/authorized-release-service.md"],
+        "examples": ["docs/authorized-release-service.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/release-process.md", "docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Authorized-Delivery.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "browser-webdriver-pairing",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/release-manifest.schema.json"],
+        "readme": ["README.md"],
+        "api": ["docs/webdriver-humanize-and-pairing.md"],
+        "configuration": ["docs/webdriver-humanize-and-pairing.md"],
+        "examples": ["docs/webdriver-humanize-and-pairing.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Browser-and-WebDriver-Pairing.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "profile-configuration",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/launch-options.schema.json"],
+        "readme": ["README.md"],
+        "api": ["docs/profile-configuration.md"],
+        "configuration": ["docs/profile-configuration.md"],
+        "examples": ["docs/profile-configuration.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Profile-Configuration.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "native-humanize",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/automation-backends.json"],
+        "readme": ["README.md"],
+        "api": ["docs/webdriver-humanize-and-pairing.md"],
+        "configuration": ["docs/webdriver-humanize-and-pairing.md"],
+        "examples": ["packages/node/README.md", "packages/python/README.md", "packages/java/README.md", "packages/dotnet/README.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Native-Humanize.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "automation-backends",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/automation-backends.json", "contracts/automation-backends.schema.json"],
+        "readme": ["README.md"],
+        "api": ["docs/wiki/Automation-Backends.md"],
+        "configuration": ["docs/wiki/Automation-Backends.md"],
+        "examples": ["packages/node/README.md", "packages/python/README.md", "packages/java/README.md", "packages/dotnet/README.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Automation-Backends.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "plans-and-licensing",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/plans.json", "contracts/license-lease.schema.json"],
+        "readme": ["README.md"],
+        "api": ["docs/licensing.md"],
+        "configuration": ["docs/licensing.md"],
+        "examples": ["docs/licensing.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Plans-and-Licensing.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "error-contract-and-troubleshooting",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/error-codes.json", "contracts/error-codes.schema.json"],
+        "readme": ["README.md"],
+        "api": ["contracts/error-codes.json"],
+        "configuration": ["docs/authorized-release-service.md"],
+        "examples": ["packages/node/README.md", "packages/python/README.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Errors-and-Troubleshooting.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "platform-support",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/platform-support.json"],
+        "readme": ["README.md"],
+        "api": ["docs/support-matrix.md"],
+        "configuration": ["docs/support-matrix.md"],
+        "examples": ["docs/support-matrix.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Platform-Support.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "network-and-proxy-boundaries",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/launch-options.schema.json"],
+        "readme": ["README.md"],
+        "api": ["docs/network-topology.md"],
+        "configuration": ["docs/profile-configuration.md"],
+        "examples": ["docs/profile-configuration.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Network-and-Proxy-Boundaries.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    },
+    {
+      "id": "detection-qa",
+      "status": "active",
+      "local": {
+        "contract": ["contracts/automation-backends.json"],
+        "readme": ["README.md"],
+        "api": ["docs/detection-benchmark.md"],
+        "configuration": ["docs/detection-benchmark.md"],
+        "examples": ["docs/detection-benchmark.md"],
+        "changelog": ["CHANGELOG.md"],
+        "support": ["docs/support-matrix.md"],
+        "wiki": ["docs/wiki/Detection-QA.md"],
+        "githubFacing": ["README.md", "docs/wiki/Home.md"]
+      },
+      "external": { "githubAbout": "receipt-required", "remoteWiki": "receipt-required", "officialWebsiteSource": "receipt-required", "websiteDeployment": "receipt-required" }
+    }
+  ]
+}

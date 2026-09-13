@@ -1,0 +1,74 @@
+rules:
+  - id: slybrowser.javascript.dynamic-code-execution
+    message: Dynamic code execution is forbidden in the public SDK and delivery tooling.
+    languages: [javascript, typescript]
+    severity: ERROR
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: slybrowser.javascript.child-process-shell
+    message: Child processes must use an argv array with shell execution disabled.
+    languages: [javascript, typescript]
+    severity: ERROR
+    pattern: |
+      $F(..., { ..., shell: true, ... })
+
+  - id: slybrowser.javascript.tls-verification-disabled
+    message: TLS certificate verification must not be disabled.
+    languages: [javascript, typescript]
+    severity: ERROR
+    pattern-either:
+      - pattern: |
+          ({ ..., rejectUnauthorized: false, ... })
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = $VALUE
+
+  - id: slybrowser.python.shell-execution
+    message: Python subprocesses must not execute through a shell.
+    languages: [python]
+    severity: ERROR
+    pattern-either:
+      - pattern: subprocess.$METHOD(..., shell=True, ...)
+      - pattern: os.system(...)
+
+  - id: slybrowser.python.tls-verification-disabled
+    message: Python network clients must verify TLS certificates.
+    languages: [python]
+    severity: ERROR
+    pattern-either:
+      - pattern: requests.$METHOD(..., verify=False, ...)
+      - pattern: $SESSION.verify = False
+      - pattern: ssl._create_unverified_context(...)
+
+  - id: slybrowser.java.runtime-exec
+    message: Java processes must use ProcessBuilder with an explicit argv list.
+    languages: [java]
+    severity: ERROR
+    pattern: Runtime.getRuntime().exec(...)
+
+  - id: slybrowser.java.tls-verification-disabled
+    message: Java TLS hostname or certificate verification must not be bypassed.
+    languages: [java]
+    severity: ERROR
+    pattern-either:
+      - pattern: $CLIENT.setHostnameVerifier(($HOST, $SESSION) -> true)
+      - pattern: HttpsURLConnection.setDefaultHostnameVerifier(($HOST, $SESSION) -> true)
+
+  - id: slybrowser.csharp.shell-execution
+    message: .NET child processes must keep UseShellExecute disabled.
+    languages: [csharp]
+    severity: ERROR
+    pattern: |
+      new ProcessStartInfo {
+        ...,
+        UseShellExecute = true,
+        ...
+      }
+
+  - id: slybrowser.csharp.tls-verification-disabled
+    message: .NET TLS certificate verification must not be bypassed.
+    languages: [csharp]
+    severity: ERROR
+    pattern-either:
+      - pattern: HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+      - pattern: $HANDLER.ServerCertificateCustomValidationCallback = (..., ...) => true

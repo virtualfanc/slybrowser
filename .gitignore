@@ -1,0 +1,115 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+secrets/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# .NET
+**/bin/
+**/obj/
+TestResults/
+
+# Java
+**/target/
+packages/java/$out
+
+# Browser binaries, test evidence, and private Chromium source
+artifacts/
+tests/detection/browsers.local.json
+private/
+vendor/chromium/
+/packages/license-service/
+/website/
+/memory/
+/docs/business-model-*.md
+/docs/product-feedback-*.md
+*.exe
+*.dll
+*.pdb
+*.dSYM/
+
+# Repository-root Linux runtime bundle used only for local packaged-browser QA.
+# Keep these entries anchored so similarly named SDK/documentation files remain visible.
+/BUILD-INFO.txt
+/MEIPreload/
+/chrome
+/chrome_100_percent.pak
+/chrome_200_percent.pak
+/chrome_crashpad_handler
+/chromedriver
+/headless_command_resources.pak
+/icudtl.dat
+/libEGL.so
+/libGLESv2.so
+/libVkICD_mock_icd.so
+/libVkLayer_khronos_validation.so
+/libqt5_shim.so
+/libqt6_shim.so
+/libvk_swiftshader.so
+/locales/
+/resources.pak
+/resources/
+/slybrowser
+/snapshot_blob.bin
+/v8_context_snapshot.bin
+
+# Temporary release files
+.cache/
+tmp/
+release-staging/
+
+# Local authorization-service state and generated credentials
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.authorization.json
+
+# Local AI-agent instructions, state, and temporary output.
+/AGENTS.md
+/AGENTS.override.md
+/CLAUDE.md
+/.codex/
+/.claude/
+/.cursor/
+/.continue/
+/.aider/
+/.windsurf/
+/.agent/
+/.agents/
+/.ai/
+/memory/hot-cache.md
+/memory/open-loops.md
+**/codex-clipboard-*
+**/*-ai-scratch.*
+**/*-agent-scratch.*
+**/*-codex-scratch.*
+**/*-ai-transcript.*
+**/*-agent-transcript.*
+**/*-codex-transcript.*
+**/*.ai.tmp
+**/*.agent.tmp
+**/*.codex.tmp

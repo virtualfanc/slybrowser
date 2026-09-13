@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slybrowser"
+version = "0.1.0"
+description = "Python SDK and CLI for SlyBrowser"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "SlyBrowser contributors" }]
+keywords = ["slybrowser", "webdriver", "playwright", "browser-automation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "cryptography>=44",
+  "platformdirs>=4.3",
+]
+
+[project.optional-dependencies]
+playwright = ["playwright>=1.62,<1.63"]
+
+[project.urls]
+Homepage = "https://slybrowser.com"
+Repository = "https://github.com/virtualfanc/slybrowser"
+Issues = "https://github.com/virtualfanc/slybrowser/issues"
+Documentation = "https://github.com/virtualfanc/slybrowser#readme"
+
+[project.scripts]
+slybrowser = "slybrowser.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/slybrowser"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

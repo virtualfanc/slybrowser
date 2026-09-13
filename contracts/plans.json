@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "currency": "USD",
+  "billingPeriod": "month",
+  "plans": [
+    {
+      "id": "free",
+      "sku": "free",
+      "name": "Free",
+      "monthlyPriceCents": 0,
+      "autoRenew": false,
+      "concurrency": 1,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "basic",
+      "sku": "basic",
+      "name": "Basic",
+      "monthlyPriceCents": 1900,
+      "autoRenew": true,
+      "concurrency": 5,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "pro",
+      "sku": "pro",
+      "name": "Pro",
+      "monthlyPriceCents": 4900,
+      "autoRenew": true,
+      "concurrency": 20,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "max",
+      "sku": "max",
+      "name": "Max",
+      "monthlyPriceCents": 19900,
+      "autoRenew": true,
+      "concurrency": 200,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    },
+    {
+      "id": "ultra",
+      "sku": "ultra",
+      "name": "Ultra",
+      "monthlyPriceCents": 49900,
+      "autoRenew": true,
+      "concurrency": 2000,
+      "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/contracts/delivery/change-context.schema.json",
+  "title": "SlyBrowser public delivery change context",
+  "type": "object",
+  "required": ["changeId", "taskRefs", "requirementIds", "affectedFeatureIds", "fourBindingRequired", "fourBindingReason"],
+  "properties": {
+    "changeId": { "type": "string", "minLength": 1 },
+    "taskRefs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "requirementIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "affectedFeatureIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "fourBindingRequired": { "type": "boolean" },
+    "fourBindingReason": { "type": "string", "minLength": 1 },
+    "stagedFilesReviewed": { "type": "boolean" },
+    "remotePublicationAuthorized": { "const": false }
+  },
+  "additionalProperties": false
+}

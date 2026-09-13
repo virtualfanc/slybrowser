@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "registries": {
+    "node": {
+      "kind": "npm",
+      "packageName": "slybrowser",
+      "url": "https://registry.npmjs.org/",
+      "publicUrl": "https://www.npmjs.com/package/slybrowser"
+    },
+    "python": {
+      "kind": "pypi",
+      "packageName": "slybrowser",
+      "url": "https://upload.pypi.org/legacy/",
+      "publicUrl": "https://pypi.org/project/slybrowser/"
+    },
+    "java": {
+      "kind": "maven-central",
+      "groupId": "com.slybrowser",
+      "artifactId": "slybrowser",
+      "publishingServerId": "central",
+      "publicUrl": "https://central.sonatype.com/artifact/com.slybrowser/slybrowser"
+    },
+    "dotnet": {
+      "kind": "nuget",
+      "packageId": "SlyBrowser",
+      "url": "https://api.nuget.org/v3/index.json",
+      "publicUrl": "https://www.nuget.org/packages/SlyBrowser"
+    }
+  }
+}

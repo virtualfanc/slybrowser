@@ -1,0 +1,45 @@
+{
+  "name": "@slybrowser/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SlyBrowser SDK and release-tooling workspace",
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "8.67.0",
+    "@typescript-eslint/parser": "8.67.0",
+    "eslint": "10.8.1",
+    "playwright-core": "1.62.1",
+    "puppeteer-core": "25.8.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter slybrowser build",
+    "test": "pnpm --filter slybrowser test && node --test tests/release/*.test.mjs",
+    "test:detection:unit": "node --test tests/detection/*.test.mjs",
+    "sdk:version:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/Set-SdkPackageVersion.ps1 -Check",
+    "sdk:pack": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/Publish-SdkPackages.ps1 -Package all -DryRun",
+    "sdk:evidence": "node scripts/release/Generate-SdkSupplyChainEvidence.mjs",
+    "sdk:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/Publish-SdkPackages.ps1 -Package all -Publish",
+    "benchmark:strongest": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/browser/Test-SlyVsChromiumStrongest.ps1",
+    "benchmark:kernel-update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/browser/Test-KernelUpdateScoreGate.ps1",
+    "delivery:test": "node --test tests/delivery/*.test.mjs",
+    "delivery:test:unit": "node --test tests/delivery/unit.test.mjs",
+    "delivery:test:integration": "node --test tests/delivery/integration.test.mjs",
+    "delivery:test:e2e": "node --test tests/delivery/e2e.test.mjs",
+    "delivery:candidate": "node scripts/delivery/candidate.mjs",
+    "delivery:scanner:run": "node scripts/delivery/scanner-runner.mjs",
+    "delivery:scanner:receipt": "node scripts/delivery/scanner-receipt.mjs",
+    "delivery:security": "node scripts/delivery/security-gate.mjs",
+    "delivery:history": "node scripts/delivery/history-audit-cli.mjs",
+    "delivery:staged-files": "node scripts/delivery/staged-files-gate.mjs",
+    "delivery:docs": "node scripts/delivery/docs-gate.mjs",
+    "delivery:four-binding": "node scripts/delivery/four-binding-gate.mjs",
+    "delivery:rgr": "node scripts/delivery/rgr-gate.mjs",
+    "delivery:aggregate": "node scripts/delivery/aggregate-gate.mjs",
+    "delivery:wiki:dry-run": "node scripts/delivery/wiki-publisher.mjs --source docs/wiki --dry-run",
+    "lint": "eslint \"packages/node/src/**/*.ts\" \"packages/node/tests/**/*.ts\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\" --max-warnings 0",
+    "typecheck": "pnpm --filter slybrowser typecheck"
+  }
+}

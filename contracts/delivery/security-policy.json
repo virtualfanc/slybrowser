@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "maximumTextBlobBytes": 2000000,
+  "maximumScannerAgeSeconds": 86400,
+  "allowedPlaceholderPaths": [
+    "**/.env.example"
+  ],
+  "forbiddenPathPatterns": [
+    "**/.env",
+    "**/.env.*",
+    "**/*.7z",
+    "**/*.authorization.json",
+    "**/*.dSYM/**",
+    "**/*.dll",
+    "**/*.exe",
+    "**/*.gz",
+    "**/*.key",
+    "**/*.p12",
+    "**/*.pak",
+    "**/*.pdb",
+    "**/*.pem",
+    "**/*.pfx",
+    "**/*.rar",
+    "**/*.sqlite",
+    "**/*.tar",
+    "**/*.tgz",
+    "**/*.zip",
+    "**/AGENTS.md",
+    "**/TestResults/**",
+    "**/bin/**",
+    "**/coverage/**",
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/obj/**",
+    "**/target/**",
+    "scripts/browser/Build-Chromium.ps1",
+    "scripts/browser/Test-Cpp.ps1",
+    "scripts/release/Get-WebDriverPairingArgs.ps1"
+  ],
+  "forbiddenBinaryExtensions": [
+    ".7z", ".bin", ".dat", ".dll", ".dylib", ".exe", ".gz", ".msi", ".pak", ".pdb", ".rar", ".so", ".tar", ".tgz", ".zip"
+  ],
+  "allowedBinaryPaths": [
+    "assets/**",
+    "docs/site-concepts/**",
+    "docs/site-concepts-v2/**"
+  ],
+  "contentPatterns": [
+    {
+      "id": "secret-private-key",
+      "expression": "-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE[ ]KEY-----",
+      "flags": "i"
+    },
+    {
+      "id": "secret-cloud-key",
+      "expression": "AIza[0-9A-Za-z_-]{20,}",
+      "flags": ""
+    },
+    {
+      "id": "credential-literal",
+      "expression": "(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\\s*[:=]\\s*[\\\"'][A-Za-z0-9_./+=-]{12,}[\\\"']",
+      "flags": "i"
+    },
+    {
+      "id": "pii-government-identifier",
+      "expression": "(?:passport|social[_ -]?security|national[_ -]?id)\\s*[:=]\\s*[\\\"'][A-Za-z0-9-]{6,}[\\\"']",
+      "flags": "i"
+    },
+    {
+      "id": "private-local-path",
+      "expression": "(?:[A-Za-z]:\\\\(?:Users|home|multilogin|chrome)(?:\\\\|/)|/(?:Users|home)/[^/\\s]+/)",
+      "flags": "i"
+    },
+    {
+      "id": "private-chromium-patch",
+      "expression": "diff --git a/(?:chrome|content|third_party|v8)/",
+      "flags": "i"
+    },
+    {
+      "id": "non-english-letter",
+      "expression": "(?:(?!\\p{Script=Latin})\\p{Letter})",
+      "flags": "u"
+    }
+  ],
+  "requiredExternalScanners": [
+    "git-diff-check",
+    "repository-guard",
+    "typecheck",
+    "lint",
+    "sast",
+    "dependency-vulnerability",
+    "dependency-license"
+  ],
+  "requiredDisposition": {
+    "secretOrPrivateSourceFindings": 0,
+    "unresolvedCriticalFindings": 0,
+    "unresolvedHighFindings": 0,
+    "missingScannerStatus": "blocked"
+  }
+}
