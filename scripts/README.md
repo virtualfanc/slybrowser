@@ -17,7 +17,7 @@ pnpm delivery:test
 ## SDK packages
 
 - `release/Set-SdkPackageVersion.ps1` keeps the four SDK versions aligned.
-- `release/Publish-SdkPackages.ps1` builds packages and publishes only when explicitly invoked with the publication option.
+- `release/Publish-SdkPackages.ps1` builds and validates source packages; its source-tree publication option fails closed.
 
 Run the package-specific tests before any authorized registry action.
 
@@ -30,6 +30,18 @@ Run the package-specific tests before any authorized registry action.
 - `release/Build-QualificationReport.mjs` summarizes saved evidence without claiming unrun checks.
 
 Current runtime archives are `.7z` with SHA-256 and MD5 sidecars. Browser packaging, server synchronization, webhook checks, and direct deployment are owned by the private repositories.
+
+Formal SDK publication uses `Publish-FrozenSdkPackages.ps1`. It accepts one
+complete eight-file release directory and its `Verify-SdkReleaseSet.mjs`
+manifest, rejects missing, changed, linked, or extra files, publishes those exact
+files, and verifies the content returned by each public registry. NuGet verification
+allows the registry signature to change the container bytes while requiring a valid
+signature and an identical payload-entry digest. Run `-CredentialPreflight` before
+`-Publish`. npm login, `TWINE_USERNAME`, `TWINE_PASSWORD`,
+`CENTRAL_TOKEN_USERNAME`, `CENTRAL_TOKEN_PASSWORD`, the full
+`SLY_MAVEN_GPG_FINGERPRINT`, its usable secret key, and `NUGET_API_KEY` remain
+outside the repository. Maven preflight performs an actual non-interactive sign and
+verify operation with that fingerprint before any registry write.
 
 ## Browser QA
 

@@ -16,6 +16,9 @@ if (-not $DryRun -and -not $Publish) {
 if ($DryRun -and $Publish) {
     throw 'Use either -DryRun or -Publish, not both.'
 }
+if ($Publish) {
+    throw 'Source-tree publication is disabled. Use Publish-FrozenSdkPackages.ps1 with an exact verified release set.'
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $contractPath = Join-Path $repoRoot 'contracts\sdk-packages.json'
