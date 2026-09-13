@@ -38,7 +38,7 @@
     <playwright.version>1.61.0</playwright.version>
     <selenium.version>4.46.0</selenium.version>
     <jackson.version>2.18.9</jackson.version>
-    <bouncycastle.version>1.84</bouncycastle.version>
+    <bouncycastle.version>1.85.2</bouncycastle.version>
     <junit.version>5.11.4</junit.version>
   </properties>
 
