@@ -1,0 +1,75 @@
+{
+  "$schema": "./automation-backends.schema.json",
+  "schemaVersion": 1,
+  "lastVerified": "2026-08-17",
+  "defaultBackend": "project-webdriver",
+  "backends": ["project-webdriver", "playwright", "puppeteer"],
+  "bindings": {
+    "node": {
+      "runtimeVersions": ["20", "22", "24"],
+      "backends": {
+        "project-webdriver": {
+          "package": null,
+          "supportedLines": ["1"],
+          "nativeHumanize": true
+        },
+        "playwright": {
+          "package": "playwright-core",
+          "supportedLines": ["1.62"],
+          "nativeHumanize": true
+        },
+        "puppeteer": {
+          "package": "puppeteer-core",
+          "supportedLines": ["25"],
+          "nativeHumanize": true,
+          "notes": "Puppeteer is an official JavaScript/TypeScript API; no cross-language bridge is declared."
+        }
+      }
+    },
+    "python": {
+      "runtimeVersions": ["3.10", "3.12", "3.14"],
+      "backends": {
+        "project-webdriver": {
+          "package": null,
+          "supportedLines": ["1"],
+          "nativeHumanize": true
+        },
+        "playwright": {
+          "package": "playwright",
+          "supportedLines": ["1.62"],
+          "nativeHumanize": true
+        }
+      }
+    },
+    "java": {
+      "runtimeVersions": ["11", "17", "21"],
+      "backends": {
+        "project-webdriver": {
+          "package": "org.seleniumhq.selenium:selenium-chrome-driver",
+          "supportedLines": ["4.46"],
+          "nativeHumanize": true
+        },
+        "playwright": {
+          "package": "com.microsoft.playwright:playwright",
+          "supportedLines": ["1.61"],
+          "nativeHumanize": true
+        }
+      }
+    },
+    "dotnet": {
+      "runtimeVersions": ["8", "9", "10"],
+      "backends": {
+        "project-webdriver": {
+          "package": "Selenium.WebDriver",
+          "supportedLines": ["4.46"],
+          "nativeHumanize": true
+        },
+        "playwright": {
+          "package": "Microsoft.Playwright",
+          "supportedLines": ["1.61"],
+          "nativeHumanize": true
+        }
+      }
+    }
+  }
+}

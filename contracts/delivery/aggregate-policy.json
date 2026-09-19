@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "public-commit-cumulative-v1",
+  "maximumAgeSeconds": 86400,
+  "requiredGates": [
+    "security",
+    "documentation",
+    "rgr",
+    "governance",
+    "staged-file-audit"
+  ],
+  "conditionalGates": [
+    { "gateId": "four-binding", "contextField": "fourBindingRequired", "reasonField": "fourBindingReason" }
+  ],
+  "acceptedRequiredStatus": "pass",
+  "candidateRule": "Every required receipt must bind to the exact same git-tree candidate ID.",
+  "authorizationRule": "Pass means locally eligible only and never authorizes commit, push, deployment, release, publication, or another external action."
+}

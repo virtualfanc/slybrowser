@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "serviceOrigin": "https://api.slybrowser.com",
+  "licenseLease": {
+    "launch-candidate-20260824": "h9ie2nXxsXVKlxjFIz-or1otChHTF8HS94vV_EjY1KM"
+  },
+  "releaseManifest": {
+    "release-launch-candidate-20260824": "SvSlPQKT9oZ4nIVuJXgd2pFOC0QblDph29vKlz6NJZo"
+  },
+  "licenseFile": {
+    "license-file-private-preview-v1": "wc3DR5wOqazjZF_3n41EF1cMh5d-qGv2wkZHyd0Sj6s"
+  }
+}

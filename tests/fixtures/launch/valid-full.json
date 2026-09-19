@@ -1,0 +1,72 @@
+{
+  "headless": false,
+  "channel": "stable",
+  "profileDir": "profiles/example",
+  "profile": {
+    "fingerprintMode": "seeded",
+    "fingerprintSeed": "public-contract-fixture-1",
+    "fingerprintSchemaVersion": 1,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "userAgentFullVersion": "123.0.4567.89",
+    "clientHints": [
+      { "brand": "Chromium", "version": "123" },
+      { "brand": "Google Chrome", "version": "123" },
+      { "brand": "Not_A Brand", "version": "99" }
+    ],
+    "osVersion": "10.0.0",
+    "locale": "en-US",
+    "languages": ["en-US", "en"],
+    "timezone": {
+      "zone": "America/New_York",
+      "utc": "UTC-05:00",
+      "locale": "en-US"
+    },
+    "screen": {
+      "width": 1920,
+      "height": 1080
+    },
+    "webrtc": "default",
+    "disabledFonts": ["Example Font"],
+    "canvasNoise": { "r": 1, "g": -1, "b": 2, "a": 0 },
+    "webglImageNoise": { "r": 1, "g": 1, "b": -1, "a": 0 },
+    "webgl": {
+      "vendor": "Google Inc. (NVIDIA)",
+      "renderer": "ANGLE (NVIDIA GeForce RTX 3060 Direct3D11)"
+    },
+    "webgpu": { "vendor": "nvidia", "architecture": "ampere" },
+    "audioContext": { "channel": 0.0000001, "analyzer": 0.0000002 },
+    "disabledCipherSuites": ["0x0004"],
+    "disabledMediaDevices": ["example-device-id"],
+    "clientRects": { "width": 0.125, "height": -0.125 },
+    "speechVoices": [
+      {
+        "default": true,
+        "lang": "en-US",
+        "localService": true,
+        "name": "Microsoft David",
+        "voiceURI": "Microsoft David"
+      }
+    ],
+    "cookies": [
+      {
+        "name": "example",
+        "value": "fixture",
+        "domain": ".example.test",
+        "path": "/",
+        "session": true,
+        "httpOnly": true,
+        "secure": true,
+        "sameSite": "Lax"
+      }
+    ],
+    "hardwareConcurrency": 8,
+    "deviceMemory": 8,
+    "deviceName": "DESKTOP-EXAMPLE",
+    "macAddress": "02:00:00:00:00:01",
+    "doNotTrack": true,
+    "allowedPorts": [80, 443, 8080],
+    "gpuEnabled": true,
+    "homepages": ["https://example.test/"]
+  },
+  "args": ["--no-first-run"]
+}

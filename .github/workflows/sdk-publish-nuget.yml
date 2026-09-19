@@ -1,0 +1,66 @@
+name: Publish .NET SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Exact GitHub release tag
+        required: true
+        default: sdk-v0.2.0
+
+concurrency:
+  group: sdk-publish-nuget-0.2.0
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      AUTHORIZATION_SHA256: ${{ vars.SDK_RELEASE_AUTHORIZATION_SHA256 }}
+    steps:
+      - name: Check out the protected workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify the protected candidate authorization
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$RELEASE_TAG" = "sdk-v0.2.0"
+          gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP" --pattern sdk-release-authorization.json
+          node scripts/release/Verify-SdkReleaseAuthorization.mjs --authorization "$RUNNER_TEMP/sdk-release-authorization.json" --expected-sha256 "$AUTHORIZATION_SHA256" --release-tag "$RELEASE_TAG" --github-env "$GITHUB_ENV"
+      - name: Check out the authorized release source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Download and verify the frozen release set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_SOURCE_TREE"
+          mkdir -p download/sdk
+          gh release download "$RELEASE_TAG" --dir download --pattern sdk-release-set.json
+          gh release download "$RELEASE_TAG" --dir download/sdk --pattern 'slybrowser-0.2.0.tgz' --pattern 'slybrowser-0.2.0-py3-none-any.whl' --pattern 'slybrowser-0.2.0.tar.gz' --pattern 'slybrowser-0.2.0.jar' --pattern 'slybrowser-0.2.0-sources.jar' --pattern 'slybrowser-0.2.0-javadoc.jar' --pattern 'slybrowser-0.2.0.pom' --pattern 'SlyBrowser.0.2.0.nupkg'
+          node scripts/release/Verify-SdkReleaseSet.mjs --release-set download/sdk-release-set.json --artifact-root download/sdk --flat-artifacts --expected-sdk-set-id "$EXPECTED_SDK_SET_ID" --expected-source-tree "$(git rev-parse HEAD^{tree})"
+      - name: Request a short-lived NuGet key
+        uses: NuGet/login@ebc737b6fc418a6ca0073cf116ec8dc156d8b81e # v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish the frozen NuGet package
+        run: dotnet nuget push download/sdk/SlyBrowser.0.2.0.nupkg --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json
+      - name: Verify NuGet readback and repository signature
+        shell: pwsh
+        run: ./scripts/release/Verify-PublishedNuGet.ps1 -ReleaseSet download/sdk-release-set.json -ArtifactRoot download/sdk -ExpectedSdkSetId "$env:EXPECTED_SDK_SET_ID" -ExpectedSourceTree "$(git rev-parse HEAD^{tree})"

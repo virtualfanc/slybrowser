@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Turnstile invisible functional test</title>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="cf-turnstile" data-sitekey="1x00000000000000000000BB" data-callback="passed"></div>
+  <output id="result">waiting</output>
+  <script>function passed(token) { document.querySelector('#result').textContent = `passed:${token}`; }</script>
+</body>
+</html>

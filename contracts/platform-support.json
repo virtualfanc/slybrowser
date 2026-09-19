@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "lastVerified": "2026-08-25",
+  "browserRuntime": {
+    "supported": [
+      {
+        "platform": "windows",
+        "arch": "x64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "headless", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "windows",
+        "arch": "arm64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "headless", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "linux",
+        "arch": "x64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "headless", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "linux",
+        "arch": "arm64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "headless", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "macos",
+        "arch": "x64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      },
+      {
+        "platform": "macos",
+        "arch": "arm64",
+        "releaseChannel": "stable",
+        "modes": ["headed", "project-webdriver", "playwright", "puppeteer", "persistent-profile"]
+      }
+    ],
+    "unsupported": []
+  },
+  "sdk": {
+    "node": {
+      "versions": ["20", "22", "24"],
+      "platforms": ["windows", "linux", "macos"]
+    },
+    "python": {
+      "versions": ["3.10", "3.12", "3.14"],
+      "platforms": ["windows", "linux", "macos"]
+    },
+    "java": {
+      "versions": ["11", "17", "21"],
+      "platforms": ["windows", "linux", "macos"]
+    },
+    "dotnet": {
+      "versions": ["8", "9", "10"],
+      "platforms": ["windows", "linux", "macos"]
+    }
+  },
+  "containers": {
+    "status": "launch-target",
+    "basePlatform": "linux",
+    "baseArch": "x64",
+    "reason": "Docker is a launch target backed by the signed Linux x64 browser/WebDriver artifact and must pass container route-integrity smoke tests before public download."
+  }
+}

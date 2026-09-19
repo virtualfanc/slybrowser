@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/contracts/delivery/license-policy.schema.json",
+  "title": "SlyBrowser public production dependency license policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "allowedSpdxExpressions",
+    "deniedSpdxExpressions",
+    "reviewRequiredSpdxExpressions",
+    "unknownDisposition",
+    "reviewDisposition"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "allowedSpdxExpressions": { "$ref": "#/$defs/expressions" },
+    "deniedSpdxExpressions": { "$ref": "#/$defs/expressions" },
+    "reviewRequiredSpdxExpressions": { "$ref": "#/$defs/expressions" },
+    "unknownDisposition": { "const": "blocked" },
+    "reviewDisposition": { "const": "blocked" }
+  },
+  "$defs": {
+    "expressions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9.+-]+$" }
+    }
+  }
+}

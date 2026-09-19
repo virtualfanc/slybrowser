@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "entryPoint": "launch",
+  "inputs": ["authorizationFile", "profile", "launch", "humanize"],
+  "internalOnly": [
+    "browserExecutable",
+    "driverExecutable",
+    "shortLivedLease",
+    "licenseTrustedKeys",
+    "releaseTrustedKeys",
+    "licenseFileTrustedKeys",
+    "frameworkVersion",
+    "runtimeHandoff",
+    "releaseRoot",
+    "tempRoot"
+  ],
+  "launchDefaults": {
+    "headless": true,
+    "profileMode": "ephemeral",
+    "profileDirectory": null,
+    "updateKernel": true
+  },
+  "humanizeDefaults": {
+    "enabled": false,
+    "preset": "default",
+    "seed": null,
+    "config": {
+      "mouseStepsMin": 10,
+      "mouseStepsMax": 16,
+      "mouseStepDelayMin": 7,
+      "mouseStepDelayMax": 18,
+      "clickHoldMin": 45,
+      "clickHoldMax": 105,
+      "keyDelayMin": 35,
+      "keyDelayMax": 115,
+      "thinkDelayMin": 120,
+      "thinkDelayMax": 360
+    }
+  },
+  "profileDefaults": {
+    "fingerprintMode": "explicit",
+    "fingerprintSeed": null,
+    "fingerprintSchemaVersion": null,
+    "userAgent": null,
+    "userAgentFullVersion": null,
+    "clientHints": null,
+    "osVersion": null,
+    "timezone": null,
+    "webrtc": "default",
+    "locale": null,
+    "languages": null,
+    "screen": null,
+    "disabledFonts": null,
+    "canvasNoise": null,
+    "webglImageNoise": null,
+    "webgl": null,
+    "webgpu": null,
+    "audioContext": null,
+    "disabledCipherSuites": null,
+    "disabledMediaDevices": null,
+    "clientRects": null,
+    "speechVoices": null,
+    "cookies": null,
+    "hardwareConcurrency": null,
+    "deviceMemory": null,
+    "deviceName": null,
+    "macAddress": null,
+    "doNotTrack": null,
+    "allowedPorts": null,
+    "gpuEnabled": null,
+    "homepages": null
+  }
+}

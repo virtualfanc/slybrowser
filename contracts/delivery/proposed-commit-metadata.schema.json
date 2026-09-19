@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/contracts/delivery/proposed-commit-metadata.schema.json",
+  "title": "Proposed public Git commit metadata",
+  "type": "object",
+  "required": ["message", "authorName", "authorEmail", "branch"],
+  "properties": {
+    "message": { "type": "string", "minLength": 1, "maxLength": 10000 },
+    "authorName": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "authorEmail": { "type": "string", "minLength": 3, "maxLength": 320 },
+    "branch": { "type": "string", "minLength": 1, "maxLength": 255 }
+  },
+  "additionalProperties": false
+}

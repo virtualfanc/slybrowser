@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/contracts/delivery/receipt.schema.json",
+  "title": "SlyBrowser delivery gate receipt",
+  "type": "object",
+  "required": ["schemaVersion", "candidateId", "status", "observedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "gateId": { "type": "string", "minLength": 1 },
+    "caseId": { "type": "string", "minLength": 1 },
+    "candidateId": { "type": "string", "pattern": "^git-tree:[0-9a-f]{40,64}$" },
+    "status": { "enum": ["pass", "fail", "blocked", "not_evaluated", "not_applicable"] },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "subject": { "type": "string", "minLength": 1 },
+    "evidenceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  },
+  "anyOf": [
+    { "required": ["gateId"] },
+    { "required": ["caseId"] }
+  ],
+  "additionalProperties": true
+}

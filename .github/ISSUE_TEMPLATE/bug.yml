@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible SlyBrowser SDK or browser problem
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include license keys, credentials, customer data, or security vulnerabilities.
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK and version
+      placeholder: Python slybrowser 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser and Chromium version
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include sanitized configuration and exact steps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets and confirmed this is not a private security report.
+          required: true

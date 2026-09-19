@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "id": "public-security-scanners-v1",
+  "subject": "exact-staged-tree",
+  "scanners": [
+    {
+      "id": "git-diff-check",
+      "tool": "git",
+      "version": "2.55.0",
+      "scope": "staged-diff",
+      "parser": "exit-zero",
+      "network": "none",
+      "timeoutMs": 60000,
+      "toolPathEnvironment": "SLY_SCANNER_GIT_PATH",
+      "limitations": [
+        "Checks whitespace errors in the staged diff while candidate identity is verified before and after execution."
+      ]
+    },
+    {
+      "id": "repository-guard",
+      "tool": "sly-exact-index-guard",
+      "version": "1.0.0",
+      "scope": "exact-index",
+      "parser": "repository-guard",
+      "network": "none",
+      "timeoutMs": 60000,
+      "toolPathEnvironment": null,
+      "limitations": [
+        "Reads Git index paths and blobs directly and does not inspect safer unstaged replacements."
+      ]
+    },
+    {
+      "id": "typecheck",
+      "tool": "pnpm",
+      "version": "10.15.1",
+      "scope": "exact-index",
+      "parser": "exit-zero",
+      "network": "none",
+      "timeoutMs": 900000,
+      "toolPathEnvironment": "SLY_SCANNER_PNPM_PATH",
+      "limitations": [
+        "Requires a frozen dependency installation matching pnpm-lock.yaml in the isolated candidate root."
+      ]
+    },
+    {
+      "id": "lint",
+      "tool": "eslint",
+      "version": "10.8.1",
+      "scope": "exact-index",
+      "parser": "eslint-json",
+      "network": "none",
+      "timeoutMs": 900000,
+      "toolPathEnvironment": "SLY_SCANNER_ESLINT_PATH",
+      "limitations": [
+        "Requires the exact pinned ESLint dependency and configuration in the isolated candidate root."
+      ]
+    },
+    {
+      "id": "sast",
+      "tool": "semgrep",
+      "version": "1.172.0",
+      "scope": "exact-index",
+      "parser": "semgrep-json",
+      "network": "none",
+      "timeoutMs": 900000,
+      "toolPathEnvironment": "SLY_SCANNER_SEMGREP_PATH",
+      "limitations": [
+        "Uses only the version-controlled contracts/delivery/semgrep-rules.yml rule set with metrics disabled."
+      ]
+    },
+    {
+      "id": "dependency-vulnerability",
+      "tool": "osv-scanner",
+      "version": "2.4.0",
+      "scope": "exact-index",
+      "parser": "osv-json",
+      "network": "required",
+      "timeoutMs": 900000,
+      "toolPathEnvironment": "SLY_SCANNER_OSV_PATH",
+      "supportingTools": [],
+      "requiredEcosystems": [
+        "npm",
+        "pypi",
+        "maven",
+        "nuget"
+      ],
+      "limitations": [
+        "OSV-Scanner recursively scans the isolated exact candidate; missing npm, PyPI, Maven, or NuGet resolution input/result coverage and vulnerability-database errors block eligibility."
+      ]
+    },
+    {
+      "id": "dependency-license",
+      "tool": "syft",
+      "version": "1.51.0",
+      "scope": "exact-index",
+      "parser": "syft-license-policy",
+      "network": "required",
+      "timeoutMs": 900000,
+      "toolPathEnvironment": "SLY_SCANNER_SYFT_PATH",
+      "supportingTools": [
+        {
+          "tool": "pnpm",
+          "version": "10.15.1",
+          "toolPathEnvironment": "SLY_SCANNER_PNPM_PATH"
+        },
+        {
+          "tool": "maven",
+          "version": "3.9.16",
+          "toolPathEnvironment": "SLY_SCANNER_MAVEN_PATH"
+        },
+        {
+          "tool": "java",
+          "version": "21.0.9",
+          "toolPathEnvironment": "SLY_SCANNER_JAVA_PATH"
+        },
+        {
+          "tool": "dotnet",
+          "version": "8.0.424",
+          "toolPathEnvironment": "SLY_SCANNER_DOTNET_PATH"
+        }
+      ],
+      "requiredEcosystems": [
+        "npm",
+        "pypi",
+        "maven",
+        "nuget"
+      ],
+      "limitations": [
+        "Only the exact Node production install, hashed Python requirements, Maven runtime resolution, and source .NET lock are eligible; resolution drift, unknown, or review-required licenses block eligibility.",
+        "NuGet packages are restored in locked mode and their source-lock, project.assets.json, .nupkg.metadata contentHash, and nuspec SPDX expression must agree."
+      ]
+    }
+  ]
+}

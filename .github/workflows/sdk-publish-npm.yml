@@ -1,0 +1,64 @@
+name: Publish Node SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Exact GitHub release tag
+        required: true
+        default: sdk-v0.2.0
+
+concurrency:
+  group: sdk-publish-npm-0.2.0
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      AUTHORIZATION_SHA256: ${{ vars.SDK_RELEASE_AUTHORIZATION_SHA256 }}
+    steps:
+      - name: Check out the protected workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify the protected candidate authorization
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$RELEASE_TAG" = "sdk-v0.2.0"
+          gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP" --pattern sdk-release-authorization.json
+          node scripts/release/Verify-SdkReleaseAuthorization.mjs --authorization "$RUNNER_TEMP/sdk-release-authorization.json" --expected-sha256 "$AUTHORIZATION_SHA256" --release-tag "$RELEASE_TAG" --github-env "$GITHUB_ENV"
+      - name: Check out the authorized release source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Download and verify the frozen release set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_SOURCE_TREE"
+          mkdir -p download/sdk
+          gh release download "$RELEASE_TAG" --dir download --pattern sdk-release-set.json
+          gh release download "$RELEASE_TAG" --dir download/sdk --pattern 'slybrowser-0.2.0.tgz' --pattern 'slybrowser-0.2.0-py3-none-any.whl' --pattern 'slybrowser-0.2.0.tar.gz' --pattern 'slybrowser-0.2.0.jar' --pattern 'slybrowser-0.2.0-sources.jar' --pattern 'slybrowser-0.2.0-javadoc.jar' --pattern 'slybrowser-0.2.0.pom' --pattern 'SlyBrowser.0.2.0.nupkg'
+          node scripts/release/Verify-SdkReleaseSet.mjs --release-set download/sdk-release-set.json --artifact-root download/sdk --flat-artifacts --expected-sdk-set-id "$EXPECTED_SDK_SET_ID" --expected-source-tree "$(git rev-parse HEAD^{tree})"
+      - name: Publish through npm trusted publishing
+        run: |
+          npm install --global npm@11.5.1
+          npm publish download/sdk/slybrowser-0.2.0.tgz --access public
+      - name: Verify npm readback
+        run: node scripts/release/Verify-PublishedSdkArtifacts.mjs --target node --release-set download/sdk-release-set.json --artifact-root download/sdk

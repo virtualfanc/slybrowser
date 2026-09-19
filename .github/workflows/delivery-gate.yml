@@ -1,0 +1,61 @@
+name: Public delivery gate harness
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delivery-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  three-level-harness:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }} / ${{ matrix.level }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        node: [20, 22, 24]
+        level: [unit, integration, e2e]
+    steps:
+      - name: Check out the exact workflow candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Select Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run delivery gate ${{ matrix.level }} tests
+        shell: bash
+        run: node --test "tests/delivery/${{ matrix.level }}.test.mjs"
+      - name: Capture checked-out candidate identity
+        shell: bash
+        env:
+          CANDIDATE_RECEIPT: ${{ runner.temp }}/slybrowser-candidate.json
+        run: node scripts/delivery/candidate.mjs --repo . --output "$CANDIDATE_RECEIPT"
+
+  harness-summary:
+    name: Delivery gate harness summary
+    if: ${{ always() }}
+    needs: [three-level-harness]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the complete test matrix
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.three-level-harness.result }}
+        run: test "$MATRIX_RESULT" = "success"
+
+# This workflow runs for every pull request and push, but validates only the portable
+# gate harness. It deliberately cannot manufacture eligibility or trusted pass receipts
+# for CodeQL/SAST, dependency/license review, real packaged Browser/Driver E2E,
+# governance review, remote Wiki/About, or website deployment. The canonical trusted
+# producer registry is unconfigured, so cumulative eligibility remains blocked until
+# authorized producers and branch-protection enforcement are independently configured.

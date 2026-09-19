@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/schemas/license-authorization.schema.json",
+  "title": "SlyBrowser license service authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "serviceUrl", "licenseKey", "channel"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "serviceUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "licenseKey": { "type": "string", "pattern": "^sly_live_[0-9a-f-]{36}\\.[A-Za-z0-9_-]{40,}$" },
+    "channel": { "const": "stable" }
+  }
+}
