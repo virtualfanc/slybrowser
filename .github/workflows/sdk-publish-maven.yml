@@ -26,7 +26,7 @@ jobs:
       AUTHORIZATION_SHA256: ${{ vars.SDK_RELEASE_AUTHORIZATION_SHA256 }}
     steps:
       - name: Check out the protected workflow source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Verify the protected candidate authorization
@@ -37,7 +37,7 @@ jobs:
           gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP" --pattern sdk-release-authorization.json
           node scripts/release/Verify-SdkReleaseAuthorization.mjs --authorization "$RUNNER_TEMP/sdk-release-authorization.json" --expected-sha256 "$AUTHORIZATION_SHA256" --release-tag "$RELEASE_TAG" --github-env "$GITHUB_ENV"
       - name: Check out the authorized release source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_tag }}
           persist-credentials: false
