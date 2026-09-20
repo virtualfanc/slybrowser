@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-playwright = ["playwright>=1.62,<1.63"]
+playwright = ["playwright>=1.62,<1.64"]
 
 [project.urls]
 Homepage = "https://slybrowser.com"
