@@ -12,6 +12,12 @@
   <img alt="Status: private preview" src="https://img.shields.io/badge/status-private%20preview-F6C445">
 </p>
 
+<p align="center">
+  <a href="https://slybrowser.com/free-license"><strong>Claim a Free license</strong></a><br>
+  Receive a 90-day Free license certificate by email for one concurrent browser process.<br>
+  It does not renew automatically and can be claimed once per email.
+</p>
+
 SlyBrowser is a Chromium-based browser distribution and multi-language SDK for
 launching isolated, reproducible browser profiles from automation frameworks. Profile
 settings are applied in the native browser layer so the browser, renderer, workers,

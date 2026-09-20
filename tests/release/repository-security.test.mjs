@@ -81,6 +81,15 @@ function isPinnedVersion(value) {
   return typeof value === "string" && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
 }
 
+test("GitHub README exposes the official Free license claim", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  assert.match(readme, /https:\/\/slybrowser\.com\/free-license/);
+  assert.match(readme, /90-day Free license certificate by email/i);
+  assert.match(readme, /one concurrent browser process/i);
+  assert.match(readme, /does not renew automatically/i);
+  assert.match(readme, /once per email/i);
+});
+
 function isScannedTextFile(file) {
   return /\.(?:css|cs|java|json|md|mjs|ps1|py|ts|tsx|txt|xml|yml|yaml)$/i.test(file);
 }
