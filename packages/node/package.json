@@ -63,7 +63,7 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "8.67.0",
     "@typescript-eslint/parser": "8.67.0",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.1",
     "@types/yauzl": "3.4.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
