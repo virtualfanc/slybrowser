@@ -55,7 +55,7 @@ jobs:
           gh release download "$RELEASE_TAG" --dir download/sdk --pattern 'slybrowser-0.2.0.tgz' --pattern 'slybrowser-0.2.0-py3-none-any.whl' --pattern 'slybrowser-0.2.0.tar.gz' --pattern 'slybrowser-0.2.0.jar' --pattern 'slybrowser-0.2.0-sources.jar' --pattern 'slybrowser-0.2.0-javadoc.jar' --pattern 'slybrowser-0.2.0.pom' --pattern 'SlyBrowser.0.2.0.nupkg'
           node scripts/release/Verify-SdkReleaseSet.mjs --release-set download/sdk-release-set.json --artifact-root download/sdk --flat-artifacts --expected-sdk-set-id "$EXPECTED_SDK_SET_ID" --expected-source-tree "$(git rev-parse HEAD^{tree})"
       - name: Request a short-lived NuGet key
-        uses: NuGet/login@ebc737b6fc418a6ca0073cf116ec8dc156d8b81e # v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         id: login
         with:
           user: ${{ vars.NUGET_USER }}
