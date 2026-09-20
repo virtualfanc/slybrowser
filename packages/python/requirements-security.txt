@@ -235,9 +235,9 @@ greenlet==3.5.5 \
     --hash=sha256:f7278591501941bb2456af102bb9cd59aab48c6cfd6e2dd68fa1290bb0c49a42 \
     --hash=sha256:fef01bd457f11fc158b130ca0027a3c365693280e8e231b65bdaf57999f39f5b
     # via playwright
-platformdirs==4.11.6 \
-    --hash=sha256:1a4016e373f89f8ec458431fe0e0c5c4285858ac623f3e20efdfcbc0bd862941 \
-    --hash=sha256:b22d992e863bc651c26b16242041c7979db6e3286e548f9a76cc91238fac599e
+platformdirs==4.11.9 \
+    --hash=sha256:0a3958f58a9e30321eaef0a424dd0b77cce242886b36b8aa992f9731ef2d59c1 \
+    --hash=sha256:e2c66a8d384596cd98e3c4aea2d761df7bac95d9d8a2cc3946daa8cdafdaebc1
     # via slybrowser (packages/python/pyproject.toml)
 playwright==1.62.0 \
     --hash=sha256:5108bd5b3e87169ddf269feee097da5893af7f8aea4634dfc840518d64c1f1da \
