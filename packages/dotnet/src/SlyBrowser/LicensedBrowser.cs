@@ -195,9 +195,9 @@ internal static class LicensedBrowser
             new LicenseFileReadOptions
             {
                 AllowInsecureLocalhost = settings.Trust.AllowInsecureLocalhost,
-                LicenseFilePassphrase = settings.Trust.LicenseFilePassphrase,
                 LicenseFileTrustedKeys = settings.Trust.LicenseFileTrustedKeys,
                 TrustedServiceUrls = settings.Trust.TrustedServiceUrls,
+                HttpClient = settings.Trust.HttpClient,
             },
             cancellationToken);
         LicenseServiceClient client = new(authorization, settings.Trust);

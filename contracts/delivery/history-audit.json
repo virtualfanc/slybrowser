@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "allowedRefPatterns": [
+    "^refs/heads/main$",
+    "^refs/remotes/origin/main$",
+    "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+  ],
+  "allowedAuthorEmailPatterns": [
+    "^[0-9]+\\+virtualfanc@users\\.noreply\\.github\\.com$",
+    "^[A-Za-z0-9._%+-]+@slybrowser\\.com$"
+  ],
+  "allowedCommitterEmailPatterns": [
+    "^[0-9]+\\+virtualfanc@users\\.noreply\\.github\\.com$",
+    "^[A-Za-z0-9._%+-]+@slybrowser\\.com$",
+    "^noreply@github\\.com$"
+  ],
+  "forbiddenMetadataPatterns": [
+    {
+      "id": "history-metadata-private-path",
+      "expression": "(?:[A-Za-z]:\\\\(?:Users|home|multilogin|chrome)(?:\\\\|/)|/(?:Users|home)/[^/\\s]+/)",
+      "flags": "i"
+    },
+    {
+      "id": "history-metadata-private-repository",
+      "expression": "(?:slybrowser-websites|slybrowser-chromium|packages/license-service|chrome_(?:win|linux))",
+      "flags": "i"
+    }
+  ]
+}

@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.slybrowser</groupId>
   <artifactId>slybrowser</artifactId>
-  <version>0.2.1</version>
+  <version>0.3.0</version>
   <name>SlyBrowser Java SDK</name>
   <description>Java project WebDriver SDK and Playwright adapter for SlyBrowser</description>
   <url>https://slybrowser.com</url>
@@ -33,7 +33,7 @@
   </issueManagement>
 
   <properties>
-    <maven.compiler.release>11</maven.compiler.release>
+    <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <playwright.version>1.61.0</playwright.version>
     <selenium.version>4.46.0</selenium.version>

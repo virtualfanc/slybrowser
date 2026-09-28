@@ -1,6 +1,5 @@
-import { spawn } from "node:child_process";
-import { createDecipheriv, createHash, createPublicKey, randomUUID, scryptSync, verify as verifySignature } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { createPublicKey, randomUUID, verify as verifySignature } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -25,19 +24,9 @@ export interface LicenseAuthorization {
 
 export interface LicenseFileReadOptions {
   allowInsecureLocalhost?: boolean;
-  licenseFilePassphrase?: string;
   licenseFileTrustedKeys?: ReadonlyMap<string, Uint8Array> | Record<string, Uint8Array>;
-  licenseFileResolutionServiceUrl?: string;
   trustedServiceUrls?: readonly string[];
   fetch?: typeof fetch;
-}
-
-export interface SealedLicenseImportResult {
-  output: string;
-  serviceUrl: string;
-  channel: "stable";
-  protection: "windows-dpapi-current-user";
-  licenseKeySha256: string;
 }
 
 export interface LicensedSessionGrant {
@@ -171,7 +160,6 @@ export interface LicenseServiceClientOptions {
   licenseTrustedKeys: ReadonlyMap<string, Uint8Array> | Record<string, Uint8Array>;
   releaseTrustedKeys: ReadonlyMap<string, Uint8Array> | Record<string, Uint8Array>;
   licenseFileTrustedKeys?: ReadonlyMap<string, Uint8Array> | Record<string, Uint8Array>;
-  licenseFilePassphrase?: string;
   trustedServiceUrls?: readonly string[];
   fetch?: typeof fetch;
   allowInsecureLocalhost?: boolean;
@@ -276,21 +264,6 @@ const LICENSE_FILE_TOP_LEVEL_FIELDS = new Set([
   "tag",
   "signature",
 ]);
-const LICENSE_FILE_SECRET_FIELDS = new Set([
-  "schemaVersion",
-  "type",
-  "audience",
-  "licenseId",
-  "fileId",
-  "serviceUrl",
-  "channel",
-  "licenseKey",
-  "secretVersion",
-  "createdAt",
-  "expiresAt",
-  "nonce",
-  "scope",
-]);
 const USER_LICENSE_FILE_FORMAT = "slybrowser-license-compact-v1";
 const USER_LICENSE_FILE_FIELDS = new Set(["schemaVersion", "type", "format", "license"]);
 const USER_LICENSE_FILE_MAX_COMPRESSED_BYTES = 64 * 1024;
@@ -394,7 +367,7 @@ function trustedKeyMap(keys: LicenseFileReadOptions["licenseFileTrustedKeys"]): 
   return new Map([...entries].map(([key, value]) => [key, Buffer.from(value)]));
 }
 
-function parseEncryptedLicenseFile(value: unknown, options: LicenseFileReadOptions): LicenseAuthorization {
+function validateEncryptedLicenseFile(value: unknown, options: LicenseFileReadOptions): { serviceUrl: string; licenseId: string } {
   const document = requiredObject(unwrapUserLicenseFile(value));
   if (Object.keys(document).some((name) => !LICENSE_FILE_TOP_LEVEL_FIELDS.has(name)) ||
       Object.keys(document).length !== LICENSE_FILE_TOP_LEVEL_FIELDS.size ||
@@ -451,75 +424,17 @@ function parseEncryptedLicenseFile(value: unknown, options: LicenseFileReadOptio
     decodeBase64Url(requiredText(signature, "signature", 256), 64),
   );
   if (!verified) fail("license_file_signature_invalid", "License file signature is invalid", 401);
-  const passphrase = options.licenseFilePassphrase;
-  if (typeof passphrase !== "string" || passphrase.length < 12) {
-    fail("license_file_locked", "License file passphrase is missing or too short", 401);
-  }
-  const salt = decodeBase64Url(requiredText(kdf, "salt", 64), 16);
-  if (salt.length !== 16) fail("authorization_invalid", "License file salt length is invalid");
-  const nonce = decodeBase64Url(requiredText(encryption, "nonce", 64), 12);
-  if (nonce.length !== 12) fail("authorization_invalid", "License file nonce length is invalid");
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    scryptSync(passphrase, salt, 32, { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }),
-    nonce,
-  );
-  decipher.setAAD(canonicalJson(publicLicenseFileHeader({ ...document, serviceUrl })));
-  decipher.setAuthTag(decodeBase64Url(requiredText(document, "tag", 64), 16));
-  let payload: Record<string, unknown>;
-  try {
-    const plaintext = Buffer.concat([
-      decipher.update(decodeBase64Url(requiredText(document, "ciphertext", 64 * 1024), 64 * 1024)),
-      decipher.final(),
-    ]);
-    payload = requiredObject(JSON.parse(plaintext.toString("utf8")));
-  } catch (error) {
-    if (error instanceof LicenseServiceError) throw error;
-    fail("license_file_locked", "License file cannot be decrypted", 401);
-  }
-  if (Object.keys(payload).some((name) => !LICENSE_FILE_SECRET_FIELDS.has(name)) ||
-      Object.keys(payload).length !== LICENSE_FILE_SECRET_FIELDS.size) {
-    fail("license_file_payload_invalid", "License file payload contains unsupported claims");
-  }
-  const licenseKey = requiredText(payload, "licenseKey", 256);
-  if (payload.schemaVersion !== 2 ||
-      payload.type !== "slybrowser-license-secret" ||
-      payload.audience !== document.audience ||
-      payload.licenseId !== licenseId ||
-      payload.fileId !== document.fileId ||
-      normalizeServiceUrl(requiredText(payload, "serviceUrl"), options.allowInsecureLocalhost ?? false) !== serviceUrl ||
-      payload.channel !== "stable" ||
-      payload.secretVersion !== 1 ||
-      payload.expiresAt !== document.expiresAt ||
-      payload.scope !== expectedScope ||
-      !/^sly_live_[0-9a-f-]{36}\.[A-Za-z0-9_-]{40,}$/.test(licenseKey) ||
-      !licenseKey.startsWith(`sly_live_${licenseId}.`)) {
-    fail("license_file_payload_invalid", "License file payload does not match its public header");
-  }
-  return { schemaVersion: 1, serviceUrl, licenseKey, channel: "stable" };
-}
-
-function localLicenseFileUnlockRequested(options: LicenseFileReadOptions): boolean {
-  return options.licenseFilePassphrase !== undefined;
+  return { serviceUrl, licenseId };
 }
 
 async function resolveEncryptedLicenseFileViaService(value: unknown, options: LicenseFileReadOptions): Promise<LicenseAuthorization> {
-  const document = requiredObject(unwrapUserLicenseFile(value));
-  if (document.schemaVersion !== 2 || document.type !== "slybrowser-license" ||
-      document.audience !== "slybrowser-license-file" || document.channel !== "stable") {
-    fail("authorization_invalid", "License file fields are invalid");
-  }
-  const documentServiceUrl = normalizeServiceUrl(requiredText(document, "serviceUrl"), options.allowInsecureLocalhost ?? false);
-  assertTrustedAuthorizationOrigin(documentServiceUrl, options);
-  const resolutionServiceUrl = normalizeServiceUrl(
-    options.licenseFileResolutionServiceUrl ?? documentServiceUrl,
-    options.allowInsecureLocalhost ?? false,
-  );
+  const { serviceUrl: documentServiceUrl, licenseId } = validateEncryptedLicenseFile(value, options);
   const fetchImplementation = options.fetch ?? fetch;
   let response: Response;
   try {
-    response = await fetchImplementation(`${resolutionServiceUrl}/v1/license-files/authorization`, {
+    response = await fetchImplementation(`${documentServiceUrl}/v1/license-files/authorization`, {
       method: "POST",
+      redirect: "error",
       headers: {
         "content-type": "application/json",
         "user-agent": "SlyBrowserNodeSDK/license-file",
@@ -550,208 +465,11 @@ async function resolveEncryptedLicenseFileViaService(value: unknown, options: Li
     throw new LicenseServiceError(message, code, response.status, details);
   }
   const authorization = parseAuthorization(parsed, options.allowInsecureLocalhost ?? false);
-  if (authorization.serviceUrl !== documentServiceUrl) {
-    fail("license_service_invalid_response", "License-file authorization service URL does not match the license file", response.status);
+  if (authorization.serviceUrl !== documentServiceUrl ||
+      !authorization.licenseKey.startsWith(`sly_live_${licenseId}.`)) {
+    fail("license_service_invalid_response", "License-file authorization does not match the signed file", response.status);
   }
   return authorization;
-}
-
-const SEALED_LICENSE_TOP_LEVEL_FIELDS = new Set([
-  "schemaVersion",
-  "type",
-  "audience",
-  "serviceUrl",
-  "channel",
-  "sealedAt",
-  "licenseKeySha256",
-  "protection",
-  "ciphertext",
-]);
-
-function licenseKeySha256(licenseKey: string): string {
-  return createHash("sha256").update(licenseKey, "utf8").digest("hex");
-}
-
-function sealedLicenseEntropy(document: Record<string, unknown>): string {
-  return [
-    "slybrowser-sealed-license-v1",
-    requiredText(document, "serviceUrl", 2048),
-    requiredText(document, "channel", 16),
-    requiredText(document, "licenseKeySha256", 64),
-  ].join("\0");
-}
-
-function assertTrustedAuthorizationOrigin(serviceUrl: string, options: LicenseFileReadOptions): void {
-  const trustedServiceUrls = (options.trustedServiceUrls ?? ["https://api.slybrowser.com"])
-    .map((url) => normalizeServiceUrl(url, options.allowInsecureLocalhost ?? false));
-  if (!trustedServiceUrls.includes(serviceUrl)) {
-    fail("license_file_untrusted_origin", "License file service URL is not trusted", 403);
-  }
-}
-
-async function windowsDpapi(operation: "protect" | "unprotect", data: Buffer, entropy: string): Promise<Buffer> {
-  if (process.platform !== "win32") {
-    fail("sealed_license_unsupported", "Windows DPAPI sealed license files are only supported on Windows", 400);
-  }
-  const script = `
-$ErrorActionPreference = 'Stop'
-[System.Reflection.Assembly]::LoadWithPartialName('System.Security') | Out-Null
-$request = [Console]::In.ReadToEnd() | ConvertFrom-Json
-$data = [Convert]::FromBase64String([string]$request.data)
-$entropy = [Convert]::FromBase64String([string]$request.entropy)
-$scope = [System.Security.Cryptography.DataProtectionScope]::CurrentUser
-if ([string]$request.operation -eq 'protect') {
-  $output = [System.Security.Cryptography.ProtectedData]::Protect($data, $entropy, $scope)
-} elseif ([string]$request.operation -eq 'unprotect') {
-  $output = [System.Security.Cryptography.ProtectedData]::Unprotect($data, $entropy, $scope)
-} else {
-  throw 'Unsupported DPAPI operation'
-}
-[Console]::Out.Write([Convert]::ToBase64String($output))
-`;
-  const encodedCommand = Buffer.from(script, "utf16le").toString("base64");
-  const request = JSON.stringify({
-    operation,
-    data: data.toString("base64"),
-    entropy: Buffer.from(entropy, "utf8").toString("base64"),
-  });
-  return await new Promise((resolvePromise, reject) => {
-    const child = spawn("powershell.exe", [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-EncodedCommand",
-      encodedCommand,
-    ], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let settled = false;
-    const rejectOnce = (error: Error): void => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    };
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout.push(chunk);
-      if (Buffer.concat(stdout).length > 16 * 1024) {
-        child.kill();
-        rejectOnce(new LicenseServiceError("Windows DPAPI returned an oversized response", "sealed_license_invalid", 400));
-      }
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr.push(chunk);
-      if (Buffer.concat(stderr).length > 8 * 1024) child.kill();
-    });
-    child.on("error", () => {
-      rejectOnce(new LicenseServiceError("Windows DPAPI is unavailable", "sealed_license_unsupported", 400));
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      if (code !== 0) {
-        reject(new LicenseServiceError("Sealed license file cannot be decrypted on this Windows user or machine", "sealed_license_locked", 401));
-        return;
-      }
-      try {
-        resolvePromise(Buffer.from(Buffer.concat(stdout).toString("utf8").trim(), "base64"));
-      } catch {
-        reject(new LicenseServiceError("Windows DPAPI returned an invalid sealed license response", "sealed_license_invalid", 400));
-      }
-    });
-    child.stdin.end(request);
-  });
-}
-
-async function parseSealedLicenseFile(value: unknown, options: LicenseFileReadOptions): Promise<LicenseAuthorization> {
-  const document = requiredObject(value);
-  if (Object.keys(document).some((name) => !SEALED_LICENSE_TOP_LEVEL_FIELDS.has(name)) ||
-      Object.keys(document).length !== SEALED_LICENSE_TOP_LEVEL_FIELDS.size ||
-      document.schemaVersion !== 3 ||
-      document.type !== "slybrowser-sealed-authorization" ||
-      document.audience !== "slybrowser") {
-    fail("sealed_license_invalid", "Sealed license file fields are invalid");
-  }
-  const serviceUrl = normalizeServiceUrl(requiredText(document, "serviceUrl"), options.allowInsecureLocalhost ?? false);
-  assertTrustedAuthorizationOrigin(serviceUrl, options);
-  if (requiredText(document, "channel", 16) !== "stable") fail("sealed_license_invalid", "Sealed license channel is invalid");
-  const sealedAt = Date.parse(requiredText(document, "sealedAt", 64));
-  if (!Number.isFinite(sealedAt)) fail("sealed_license_invalid", "Sealed license timestamp is invalid");
-  const sha256 = requiredText(document, "licenseKeySha256", 64);
-  if (!/^[0-9a-f]{64}$/.test(sha256)) fail("sealed_license_invalid", "Sealed license fingerprint is invalid");
-  const protection = requiredObject(document.protection);
-  if (Object.keys(protection).sort().join(",") !== "provider,scope" ||
-      protection.provider !== "windows-dpapi" ||
-      protection.scope !== "current-user") {
-    fail("sealed_license_unsupported", "Sealed license protection is not supported", 400);
-  }
-  const ciphertext = decodeBase64Url(requiredText(document, "ciphertext", 64 * 1024), 64 * 1024);
-  let parsed: unknown;
-  try {
-    const plaintext = await windowsDpapi("unprotect", ciphertext, sealedLicenseEntropy({ ...document, serviceUrl }));
-    parsed = JSON.parse(plaintext.toString("utf8"));
-  } catch (error) {
-    if (error instanceof LicenseServiceError) throw error;
-    fail("sealed_license_locked", "Sealed license file cannot be decrypted on this Windows user or machine", 401);
-  }
-  const authorization = parseAuthorization(parsed, options.allowInsecureLocalhost ?? false);
-  if (authorization.serviceUrl !== serviceUrl || authorization.channel !== "stable" ||
-      licenseKeySha256(authorization.licenseKey) !== sha256) {
-    fail("sealed_license_mismatch", "Sealed license payload does not match its public header", 400);
-  }
-  return authorization;
-}
-
-export async function importLicenseFileToSealedAuthorization(
-  inputPath: string,
-  outputPath: string,
-  options: LicenseFileReadOptions = {},
-): Promise<SealedLicenseImportResult> {
-  const raw = await readFile(resolve(inputPath));
-  if (raw.length > 64 * 1024) fail("authorization_invalid", "Authorization file is too large");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.toString("utf8"));
-  } catch {
-    fail("authorization_invalid", "Authorization file is not valid JSON");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || (parsed as Record<string, unknown>).schemaVersion !== 2) {
-    fail("license_file_invalid", "Only encrypted v2 SlyBrowser license files can be imported", 400);
-  }
-  const authorization = parseEncryptedLicenseFile(parsed, options);
-  assertTrustedAuthorizationOrigin(authorization.serviceUrl, options);
-  const fingerprint = licenseKeySha256(authorization.licenseKey);
-  const sealedAt = new Date().toISOString();
-  const document: Record<string, unknown> = {
-    schemaVersion: 3,
-    type: "slybrowser-sealed-authorization",
-    audience: "slybrowser",
-    serviceUrl: authorization.serviceUrl,
-    channel: authorization.channel,
-    sealedAt,
-    licenseKeySha256: fingerprint,
-    protection: {
-      provider: "windows-dpapi",
-      scope: "current-user",
-    },
-    ciphertext: "",
-  };
-  const ciphertext = await windowsDpapi(
-    "protect",
-    Buffer.from(JSON.stringify(authorization), "utf8"),
-    sealedLicenseEntropy(document),
-  );
-  document.ciphertext = ciphertext.toString("base64url");
-  const output = resolve(outputPath);
-  await writeFile(output, `${JSON.stringify(document, null, 2)}\n`, { flag: "wx", mode: 0o600 });
-  return {
-    output,
-    serviceUrl: authorization.serviceUrl,
-    channel: "stable",
-    protection: "windows-dpapi-current-user",
-    licenseKeySha256: fingerprint,
-  };
 }
 
 export async function readLicenseAuthorization(
@@ -772,14 +490,7 @@ export async function readLicenseAuthorization(
       : parsed;
     if (document && typeof document === "object" && !Array.isArray(document) &&
         (document as Record<string, unknown>).schemaVersion === 2) {
-      if (!localLicenseFileUnlockRequested(options)) {
-        return await resolveEncryptedLicenseFileViaService(parsed, options);
-      }
-      return parseEncryptedLicenseFile(parsed, options);
-    }
-    if (document && typeof document === "object" && !Array.isArray(document) &&
-        (document as Record<string, unknown>).schemaVersion === 3) {
-      return await parseSealedLicenseFile(parsed, options);
+      return await resolveEncryptedLicenseFileViaService(parsed, options);
     }
     return parseAuthorization(parsed, options.allowInsecureLocalhost ?? false);
   } catch (error) {
@@ -916,7 +627,7 @@ export class LicenseServiceClient {
   } = {}): Promise<LicenseInfo> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.2.0";
+    const sdkVersion = options.sdkVersion ?? "0.3.0";
     const versionPolicy = options.versionPolicy ?? (options.browserVersion === undefined ? "latest" : "exact");
     if (versionPolicy === "latest" && options.browserVersion !== undefined) {
       fail("version_policy_invalid", "Latest selection cannot include a requested browser version");
@@ -1031,7 +742,7 @@ export class LicenseServiceClient {
   } = {}): Promise<LicensedSessionGrant> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.2.0";
+    const sdkVersion = options.sdkVersion ?? "0.3.0";
     const versionPolicy = options.versionPolicy ?? (options.browserVersion === undefined ? "latest" : "exact");
     if (versionPolicy === "latest" && options.browserVersion !== undefined) {
       fail("version_policy_invalid", "Latest selection cannot include a requested browser version");
@@ -1168,7 +879,7 @@ export class LicenseServiceClient {
   } = {}): Promise<RuntimeSessionGrant> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.2.0";
+    const sdkVersion = options.sdkVersion ?? "0.3.0";
     const startupId = options.startupId ?? newStartupId();
     if (!/^st_[A-Za-z0-9_-]{16,120}$/.test(startupId)) {
       fail("startup_id_invalid", "Runtime startup ID is invalid");
@@ -1405,18 +1116,24 @@ export class LicenseServiceClient {
     });
   }
 
-  async downloadArtifact(grant: LicensedSessionGrant): Promise<Response> {
-    const response = await this.#fetch(grant.artifact.url, {
+  async downloadArtifact(grant: LicensedSessionGrant, signal?: AbortSignal): Promise<Response> {
+    let artifactUrl: URL;
+    try { artifactUrl = new URL(grant.artifact.url); }
+    catch { fail("license_service_invalid_response", "Artifact URL is invalid"); }
+    const response = await this.#fetch(artifactUrl.toString(), {
       method: "GET",
       headers: { authorization: `Session ${grant.sessionToken}` },
       redirect: "error",
+      ...(signal === undefined ? {} : { signal }),
     });
     if (!response.ok || !response.body) await this.#throwResponse(response);
     return response;
   }
 
-  async downloadRuntimeArtifact(grant: RuntimeSessionGrant): Promise<Response> {
-    const artifactUrl = new URL(grant.downloadTicket.artifactUrl);
+  async downloadRuntimeArtifact(grant: RuntimeSessionGrant, signal?: AbortSignal): Promise<Response> {
+    let artifactUrl: URL;
+    try { artifactUrl = new URL(grant.downloadTicket.artifactUrl); }
+    catch { fail("license_service_invalid_response", "Runtime artifact URL is invalid"); }
     if (artifactUrl.pathname.startsWith("/v1/releases/artifacts/")) {
       artifactUrl.pathname = artifactUrl.pathname.replace("/v1/releases/artifacts/", "/v2/runtime/artifacts/");
     }
@@ -1427,6 +1144,7 @@ export class LicenseServiceClient {
       method: "GET",
       headers: { authorization: `Download ${grant.downloadTicket.token}` },
       redirect: "error",
+      ...(signal === undefined ? {} : { signal }),
     });
     if (!response.ok || !response.body) await this.#throwResponse(response);
     return response;

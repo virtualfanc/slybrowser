@@ -7,10 +7,11 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 
 import * as yauzl from "yauzl";
 
-import { ArtifactError } from "./errors.js";
+import { ArtifactError, LicenseServiceError } from "./errors.js";
 import { verifyArtifact } from "./manifest.js";
 import type { LicenseServiceClient, LicensedSessionGrant, RuntimeSessionGrant } from "./service.js";
 
@@ -18,6 +19,17 @@ const execFileAsync = promisify(execFile);
 const MAXIMUM_7Z_ENTRIES = 100_000;
 const INSPECTION_TIMEOUT_MS = 30_000;
 const EXTRACTION_TIMEOUT_MS = 5 * 60_000;
+const DOWNLOAD_DEADLINE_MS = 90 * 60_000;
+const DOWNLOAD_BACKOFF_MS = [1_000, 2_000] as const;
+const DOWNLOAD_RETRY_STATUSES = new Set([429, 502, 503, 504]);
+
+function retryableDownloadError(error: unknown): boolean {
+  if (error instanceof LicenseServiceError) return DOWNLOAD_RETRY_STATUSES.has(error.status);
+  if (error instanceof TypeError) return true;
+  const code = error instanceof Error && "code" in error ? String(error.code) : "";
+  return new Set(["ECONNRESET", "ETIMEDOUT", "EPIPE", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "ABORT_ERR"]).has(code) ||
+    error instanceof Error && error.name === "AbortError";
+}
 
 export interface BrowserInstallation {
   version: string;
@@ -653,17 +665,48 @@ export async function installGrantedBrowser(
       await quarantinePath(archive);
       const temporaryArchive = `${archive}.${process.pid}.${Date.now()}.${randomUUID()}.part`;
       try {
-        const response = isRuntimeGrant(grant)
-          ? await client.downloadRuntimeArtifact(grant)
-          : await client.downloadArtifact(grant);
-        assertContentLength(response, grant.artifact.size);
-        await pipeline(
-          Readable.fromWeb(response.body! as never),
-          enforceDownloadSizeLimit(grant.artifact.size),
-          createWriteStream(temporaryArchive, { flags: "wx", mode: 0o600 }),
-        );
-        await verifyArtifact(temporaryArchive, grant.artifact);
-        await rename(temporaryArchive, archive);
+        const controller = new AbortController();
+        const deadline = performance.now() + DOWNLOAD_DEADLINE_MS;
+        const timer = setTimeout(() => controller.abort(), DOWNLOAD_DEADLINE_MS);
+        try {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            if (controller.signal.aborted || performance.now() >= deadline) {
+              throw new ArtifactError("Browser artifact download exceeded 90 minutes", "artifact_download_failed");
+            }
+            try {
+              const response = isRuntimeGrant(grant)
+                ? await client.downloadRuntimeArtifact(grant, controller.signal)
+                : await client.downloadArtifact(grant, controller.signal);
+              assertContentLength(response, grant.artifact.size);
+              await pipeline(
+                Readable.fromWeb(response.body! as never),
+                enforceDownloadSizeLimit(grant.artifact.size),
+                createWriteStream(temporaryArchive, { flags: "wx", mode: 0o600 }),
+              );
+              await verifyArtifact(temporaryArchive, grant.artifact);
+              await rename(temporaryArchive, archive);
+              break;
+            } catch (error) {
+              await rm(temporaryArchive, { force: true });
+              if (controller.signal.aborted || performance.now() >= deadline) {
+                throw new ArtifactError("Browser artifact download exceeded 90 minutes", "artifact_download_failed");
+              }
+              if (attempt === 2 || !retryableDownloadError(error)) {
+                if (retryableDownloadError(error) && !(error instanceof LicenseServiceError)) {
+                  throw new ArtifactError("Browser artifact download transport failed", "artifact_download_failed");
+                }
+                throw error;
+              }
+              const backoff = DOWNLOAD_BACKOFF_MS[attempt] ?? 0;
+              if (deadline - performance.now() <= backoff) {
+                throw new ArtifactError("Browser artifact download exceeded 90 minutes", "artifact_download_failed");
+              }
+              await delay(backoff, undefined, { signal: controller.signal });
+            }
+          }
+        } finally {
+          clearTimeout(timer);
+        }
       } catch (error) {
         await rm(temporaryArchive, { force: true });
         throw error;

@@ -151,12 +151,11 @@ public sealed class LicenseServiceClientOptions
     public required IReadOnlyDictionary<string, byte[]> ReleaseTrustedKeys { get; init; }
     public IReadOnlyDictionary<string, byte[]> LicenseFileTrustedKeys { get; init; } =
         new Dictionary<string, byte[]>(StringComparer.Ordinal);
-    public string? LicenseFilePassphrase { get; init; }
     public IReadOnlySet<string> TrustedServiceUrls { get; init; } =
         new HashSet<string>(["https://api.slybrowser.com"], StringComparer.Ordinal);
     public HttpClient? HttpClient { get; init; }
     public bool AllowInsecureLocalhost { get; init; }
-    public string SdkVersion { get; init; } = "0.2.0";
+    public string SdkVersion { get; init; } = "0.3.0";
 }
 
 public sealed class CreateSessionOptions
@@ -185,6 +184,9 @@ public sealed class CreateRuntimeSessionOptions
 
 public sealed class LicenseServiceClient : IDisposable
 {
+    private static readonly TimeSpan ArtifactDeadline = TimeSpan.FromMinutes(90);
+    private static readonly int[] ArtifactBackoffMs = [1000, 2000];
+    private static readonly HashSet<int> ArtifactRetryStatuses = [429, 502, 503, 504];
     private static readonly HashSet<string> Plans = new(StringComparer.Ordinal)
         { "free", "basic", "pro", "max", "ultra" };
     private static readonly HashSet<string> SafeErrorDetailFields = new(StringComparer.Ordinal)
@@ -209,6 +211,14 @@ public sealed class LicenseServiceClient : IDisposable
             options.AllowInsecureLocalhost);
         _http = options.HttpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
         _ownsHttpClient = options.HttpClient is null;
+        if (_http.Timeout != Timeout.InfiniteTimeSpan && _http.Timeout < ArtifactDeadline)
+        {
+            try { _http.Timeout = Timeout.InfiniteTimeSpan; }
+            catch (InvalidOperationException error)
+            {
+                throw Fail("artifact_download_failed", "HTTP client timeout cannot support the 90-minute artifact download deadline", exception: error);
+            }
+        }
         _licenseVerifier = new LicenseVerifier(options.LicenseTrustedKeys);
         _releaseTrustedKeys = options.ReleaseTrustedKeys;
         _sdkVersion = options.SdkVersion;
@@ -242,12 +252,79 @@ public sealed class LicenseServiceClient : IDisposable
                 document.RootElement.TryGetProperty("schemaVersion", out JsonElement schema) &&
                 schema.TryGetInt32(out int schemaVersion) &&
                 schemaVersion == 2)
-                return LicenseFileReader.Read(document.RootElement, options);
+            {
+                options ??= new LicenseFileReadOptions();
+                LicenseFileReader.Validate(document.RootElement, options);
+                return await ResolveEncryptedLicenseFileAsync(document.RootElement, options, cancellationToken);
+            }
             return ParseAuthorization(document.RootElement, options?.AllowInsecureLocalhost ?? false);
         }
         catch (JsonException exception)
         {
             throw Fail("authorization_invalid", "Authorization file is not valid JSON", 0, exception);
+        }
+    }
+
+    private static async Task<LicenseAuthorization> ResolveEncryptedLicenseFileAsync(
+        JsonElement document, LicenseFileReadOptions options, CancellationToken cancellationToken)
+    {
+        string serviceUrl = RequiredString(document, "serviceUrl", "authorization_invalid").TrimEnd('/');
+        if (!options.TrustedServiceUrls.Select(value => value.TrimEnd('/')).Contains(serviceUrl, StringComparer.Ordinal))
+            throw Fail("license_file_untrusted_origin", "License file service URL is not trusted", 403);
+        bool ownsClient = options.HttpClient is null;
+        HttpClient client = options.HttpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        try
+        {
+            using HttpRequestMessage request = new(HttpMethod.Post, $"{serviceUrl}/v1/license-files/authorization");
+            request.Headers.UserAgent.ParseAdd("SlyBrowserDotNetSDK/license-file");
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(new { schemaVersion = 1, licenseFile = document }),
+                Encoding.UTF8, "application/json");
+            using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            try
+            {
+                await response.Content.LoadIntoBufferAsync(64 * 1024);
+            }
+            catch (HttpRequestException exception)
+            {
+                throw Fail("license_service_invalid_response", "License-file authorization response is too large", (int)response.StatusCode, exception);
+            }
+            JsonDocument result;
+            try
+            {
+                result = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(cancellationToken));
+            }
+            catch (JsonException exception)
+            {
+                throw Fail("license_service_invalid_response", "License-file authorization service returned invalid JSON", (int)response.StatusCode, exception);
+            }
+            using (result)
+            {
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                string? remoteCode = result.RootElement.ValueKind == JsonValueKind.Object &&
+                    result.RootElement.TryGetProperty("error", out JsonElement error) &&
+                    error.ValueKind == JsonValueKind.Object &&
+                    error.TryGetProperty("code", out JsonElement code) && code.ValueKind == JsonValueKind.String
+                    ? code.GetString() : null;
+                throw Fail(SafeRemoteErrorCode(remoteCode),
+                    "License-file authorization service rejected the file", (int)response.StatusCode);
+            }
+            LicenseAuthorization authorization = ParseAuthorization(result.RootElement, options.AllowInsecureLocalhost);
+            string licenseId = RequiredString(document, "licenseId", "authorization_invalid");
+            if (authorization.ServiceUrl != serviceUrl ||
+                !authorization.LicenseKey.StartsWith($"sly_live_{licenseId}.", StringComparison.Ordinal))
+                throw Fail("license_service_invalid_response", "License-file authorization does not match the signed file", (int)response.StatusCode);
+            return authorization;
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            throw Fail("license_service_unreachable", "License-file authorization service is unreachable", 0, exception);
+        }
+        finally
+        {
+            if (ownsClient) client.Dispose();
         }
     }
 
@@ -801,13 +878,7 @@ public sealed class LicenseServiceClient : IDisposable
         string destination,
         CancellationToken cancellationToken = default)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, grant.Artifact.Url);
-        request.Headers.Authorization = AuthenticationHeaderValue.Parse($"Session {grant.SessionToken}");
-        using HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (!response.IsSuccessStatusCode) await ThrowResponseAsync(response, cancellationToken);
-        await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using FileStream output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-        await input.CopyToAsync(output, cancellationToken);
+        await DownloadWithRetryAsync(new Uri(grant.Artifact.Url), $"Session {grant.SessionToken}", destination, cancellationToken);
     }
 
     public async Task DownloadRuntimeArtifactAsync(
@@ -815,13 +886,73 @@ public sealed class LicenseServiceClient : IDisposable
         string destination,
         CancellationToken cancellationToken = default)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, RuntimeArtifactUri(grant));
-        request.Headers.Authorization = AuthenticationHeaderValue.Parse($"Download {grant.DownloadTicket.Token}");
-        using HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (!response.IsSuccessStatusCode) await ThrowResponseAsync(response, cancellationToken);
-        await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using FileStream output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-        await input.CopyToAsync(output, cancellationToken);
+        await DownloadWithRetryAsync(RuntimeArtifactUri(grant), $"Download {grant.DownloadTicket.Token}", destination, cancellationToken);
+    }
+
+    private async Task DownloadWithRetryAsync(Uri uri, string authorization, string destination, CancellationToken callerToken)
+    {
+        if (File.Exists(destination)) throw Fail("artifact_download_failed", "Artifact destination already exists");
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+        deadline.CancelAfter(ArtifactDeadline);
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            bool created = false;
+            bool completed = false;
+            try
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                using HttpRequestMessage request = new(HttpMethod.Get, uri);
+                request.Headers.Authorization = AuthenticationHeaderValue.Parse(authorization);
+                using HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                if (!response.IsSuccessStatusCode) await ThrowResponseAsync(response, deadline.Token);
+                await using Stream input = await response.Content.ReadAsStreamAsync(deadline.Token);
+                FileStream output;
+                try { output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true); }
+                catch (IOException diskError) { throw Fail("artifact_download_failed", "Artifact destination open failed", exception: diskError); }
+                await using (output)
+                {
+                    created = true;
+                    byte[] buffer = new byte[1024 * 1024];
+                    while (true)
+                    {
+                        int count = await input.ReadAsync(buffer, deadline.Token);
+                        if (count == 0) break;
+                        try { await output.WriteAsync(buffer.AsMemory(0, count), deadline.Token); }
+                        catch (IOException diskError) { throw Fail("artifact_download_failed", "Artifact destination write failed", exception: diskError); }
+                    }
+                    deadline.Token.ThrowIfCancellationRequested();
+                }
+                completed = true;
+                return;
+            }
+            catch (Exception error) when (
+                attempt < 2 && !deadline.IsCancellationRequested && !callerToken.IsCancellationRequested &&
+                (error is HttpRequestException or IOException ||
+                 error is LicenseServiceException serviceError && ArtifactRetryStatuses.Contains(serviceError.Status)))
+            {
+                try { await Task.Delay(ArtifactBackoffMs[attempt], deadline.Token); }
+                catch (OperationCanceledException) when (!callerToken.IsCancellationRequested && deadline.IsCancellationRequested)
+                {
+                    throw Fail("artifact_download_failed", "Artifact download exceeded 90 minutes");
+                }
+            }
+            catch (OperationCanceledException) when (!callerToken.IsCancellationRequested && deadline.IsCancellationRequested)
+            {
+                throw Fail("artifact_download_failed", "Artifact download exceeded 90 minutes");
+            }
+            catch (HttpRequestException error)
+            {
+                throw Fail("artifact_download_failed", "Artifact download transport failed", exception: error);
+            }
+            catch (IOException error)
+            {
+                throw Fail("artifact_download_failed", "Artifact download transport failed", exception: error);
+            }
+            finally
+            {
+                if (created && !completed) File.Delete(destination);
+            }
+        }
     }
 
     private RuntimeHeartbeatGrant RuntimeHeartbeatGrantFrom(
@@ -911,7 +1042,9 @@ public sealed class LicenseServiceClient : IDisposable
                 Encoding.UTF8,
                 "application/json");
         }
-        HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using CancellationTokenSource requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        requestTimeout.CancelAfter(TimeSpan.FromSeconds(100));
+        HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token);
         if (response.StatusCode == HttpStatusCode.NoContent) return response;
         if (!response.IsSuccessStatusCode) await ThrowResponseAsync(response, cancellationToken);
         return response;

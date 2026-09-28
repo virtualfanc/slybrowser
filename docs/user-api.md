@@ -1,6 +1,6 @@
 # SDK user API
 
-SlyBrowser 0.2.0 has one launch contract across Node.js, Python, Java, and .NET.
+SlyBrowser 0.3.0 has one launch contract across Node.js, Python, Java, and .NET.
 The application supplies an authorization file and may set `profile`, `launch`, and
 `humanize` options. No import command is required.
 
@@ -8,10 +8,10 @@ The application supplies an authorization file and may set `profile`, `launch`, 
 
 | Language | Package |
 | --- | --- |
-| Node.js | `npm install slybrowser@0.2.0` |
-| Python | `pip install slybrowser==0.2.0` |
-| Java | `com.slybrowser:slybrowser:0.2.0` |
-| .NET | `dotnet add package SlyBrowser --version 0.2.0` |
+| Node.js | `npm install slybrowser@0.3.0` |
+| Python | `pip install slybrowser==0.3.0` |
+| Java | `com.slybrowser:slybrowser:0.3.0` |
+| .NET | `dotnet add package SlyBrowser --version 0.3.0` |
 
 The SDK packages do not embed Browser binaries. The selected SDK downloads the exact
 authorized Browser and matching Sly WebDriver after it validates the authorization
@@ -21,6 +21,13 @@ The SDK selects, verifies, and starts the matching SlyBrowser and Sly WebDriver
 release. Runtime locations, verification material, release downloads, temporary
 state, and binding detection are managed by the package. A verification or pairing
 failure stops the launch.
+
+All four SDKs allow up to 90 minutes total for one Browser archive download, including
+retries. They make at most three attempts, with 1 and 2 second pauses, for transport
+interruptions or HTTP 429, 502, 503, and 504. They discard partial bytes before a retry.
+Authorization denial, expired tickets, redirects, invalid size or hash, and caller
+cancellation stop the download without retrying. The exact policy is in
+[`sdk-download-policy.json`](../contracts/sdk-download-policy.json).
 
 ## Inputs
 

@@ -1,10 +1,10 @@
 # SlyBrowser for Node.js
 
 ```sh
-npm install slybrowser@0.2.0
+npm install slybrowser@0.3.0
 ```
 
-This npm package is the Node.js SDK. The same 0.2.0 launch contract is also available
+This npm package is the Node.js SDK. The same 0.3.0 launch contract is also available
 for [Python](https://pypi.org/project/slybrowser/),
 [Java](https://central.sonatype.com/artifact/com.slybrowser/slybrowser), and
 [.NET](https://www.nuget.org/packages/SlyBrowser).

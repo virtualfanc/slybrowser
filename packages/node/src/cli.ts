@@ -9,7 +9,6 @@ import { LicenseServiceError } from "./errors.js";
 import { installLatestAuthorizedBrowser } from "./licensed.js";
 import {
   LicenseServiceClient,
-  importLicenseFileToSealedAuthorization,
   readLicenseAuthorization,
   type BrowserVersionPolicy,
   type KernelMajor,
@@ -82,8 +81,12 @@ export function licenseServiceErrorOutput(error: LicenseServiceError): {
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
   const [command, ...arguments_] = argv;
+  if (arguments_.includes("--passphrase")) {
+    console.error("Local license-file decryption is not supported");
+    return 2;
+  }
   if (command === "--version" || command === "-V") {
-    console.log("0.2.0");
+    console.log("0.3.0");
     return 0;
   }
   if (command === "install") {
@@ -141,7 +144,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     if (licenseCommand === "info") {
       const authorization = optionValue(licenseArguments, "--authorization");
       if (!authorization) {
-        console.error("Usage: slybrowser license info --authorization FILE [--passphrase VALUE] [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback]");
+        console.error("Usage: slybrowser license info --authorization FILE [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback]");
         return 2;
       }
       let selection: ReturnType<typeof parseInstallSelectionArguments>;
@@ -152,11 +155,9 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
         return 2;
       }
       const trustedServiceUrls = optionValues(licenseArguments, "--trusted-service-url");
-      const licenseFilePassphrase = optionValue(licenseArguments, "--passphrase");
       const licenseFileTrustedKeys = LICENSE_FILE_KEYS;
       try {
         const document = await readLicenseAuthorization(resolve(authorization), {
-          ...(licenseFilePassphrase === undefined ? {} : { licenseFilePassphrase }),
           ...(licenseFileTrustedKeys === undefined ? {} : { licenseFileTrustedKeys }),
           ...(trustedServiceUrls.length ? { trustedServiceUrls } : {}),
         });
@@ -174,28 +175,11 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
         throw error;
       }
     }
-    if (licenseCommand !== "import") {
-      console.error("Usage: slybrowser license info --authorization FILE [--passphrase VALUE] [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license import --input FILE --output FILE --passphrase VALUE [--trusted-service-url URL]");
-      return 2;
-    }
-    const input = optionValue(licenseArguments, "--input");
-    const output = optionValue(licenseArguments, "--output");
-    const passphrase = optionValue(licenseArguments, "--passphrase");
-    if (!input || !output || !passphrase) {
-      console.error("Usage: slybrowser license import --input FILE --output FILE --passphrase VALUE [--trusted-service-url URL]");
-      return 2;
-    }
-    const trustedServiceUrls = optionValues(licenseArguments, "--trusted-service-url");
-    const result = await importLicenseFileToSealedAuthorization(resolve(input), resolve(output), {
-      licenseFilePassphrase: passphrase,
-      licenseFileTrustedKeys: LICENSE_FILE_KEYS,
-      ...(trustedServiceUrls.length ? { trustedServiceUrls } : {}),
-    });
-    console.log(JSON.stringify(result, null, 2));
-    return 0;
+    console.error("Usage: slybrowser license info --authorization FILE [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback]");
+    return 2;
   }
   if (command !== "doctor") {
-    console.error("Usage: slybrowser doctor [--browser PATH] [--driver PATH] | install --authorization FILE [--cache DIR] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license info --authorization FILE [--passphrase VALUE] [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license import --input FILE --output FILE --passphrase VALUE [--trusted-service-url URL]");
+    console.error("Usage: slybrowser doctor [--browser PATH] [--driver PATH] | install --authorization FILE [--cache DIR] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback] | license info --authorization FILE [--trusted-service-url URL] [--kernel-major MAJOR|latest] [--update-kernel] [--version VERSION] [--rollback]");
     return 2;
   }
   const browserIndex = arguments_.indexOf("--browser");
@@ -225,7 +209,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
   }
   console.log(JSON.stringify({
-    sdkVersion: "0.2.0",
+    sdkVersion: "0.3.0",
     node: process.version,
     defaultBackend: "project-webdriver",
     browser: browserPath,

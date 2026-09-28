@@ -51,9 +51,9 @@ public final class LicensedBrowser {
       throw new ConfigurationException("Licensed launch settings and trust keys are required", "config_invalid");
     }
     LicenseFileReadOptions readOptions = new LicenseFileReadOptions(settings.trust.allowInsecureLocalhost);
-    readOptions.licenseFilePassphrase = settings.trust.licenseFilePassphrase;
     readOptions.licenseFileTrustedKeys = settings.trust.licenseFileTrustedKeys;
     readOptions.trustedServiceUrls = settings.trust.trustedServiceUrls;
+    readOptions.transport = settings.trust.transport;
     LicenseAuthorization authorization = LicenseServiceClient.readAuthorization(authorizationFile, readOptions);
     LicenseServiceClient client = new LicenseServiceClient(authorization, settings.trust);
     CreateRuntimeSessionOptions sessionOptions = new CreateRuntimeSessionOptions();
