@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "scope": "signed Browser and Driver archive downloads in Node.js, Python, Java, and .NET SDKs",
+  "deadlineMs": 5400000,
+  "maxAttempts": 3,
+  "backoffMs": [1000, 2000],
+  "retryHttpStatuses": [429, 502, 503, 504],
+  "retryTransportFailures": true,
+  "deadlineIncludes": ["request", "response body", "all attempts", "backoff"],
+  "rules": [
+    "Start one monotonic deadline immediately before the first archive request.",
+    "Retry a transport failure or listed HTTP status only while attempts and deadline remain.",
+    "Discard partial archive bytes before each retry; never append to a failed response.",
+    "Do not retry authorization, ticket expiry, invalid URL, redirect, size or SHA-256 failures.",
+    "Caller cancellation is terminal; never retry it.",
+    "Keep signed artifact size, SHA-256 and Browser/Driver pairing verification mandatory before installation."
+  ]
+}

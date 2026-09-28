@@ -7,12 +7,11 @@ public final class LicenseServiceClientOptions {
   public Map<String, byte[]> licenseTrustedKeys = Map.of();
   public Map<String, byte[]> releaseTrustedKeys = Map.of();
   public Map<String, byte[]> licenseFileTrustedKeys = Map.of();
-  public String licenseFilePassphrase;
   public java.util.Set<String> trustedServiceUrls = java.util.Set.of("https://api.slybrowser.com");
   public JsonTransport transport;
   public ArtifactDownloader artifactDownloader;
   public boolean allowInsecureLocalhost;
-  public String sdkVersion = "0.2.0";
+  public String sdkVersion = "0.3.0";
 
   @FunctionalInterface
   public interface JsonTransport {

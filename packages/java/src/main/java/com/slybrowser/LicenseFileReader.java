@@ -3,15 +3,9 @@ package com.slybrowser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Set;
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import org.bouncycastle.crypto.generators.SCrypt;
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
 
@@ -30,24 +24,9 @@ final class LicenseFileReader {
       "ciphertext",
       "tag",
       "signature");
-  private static final Set<String> SECRET_FIELDS = Set.of(
-      "schemaVersion",
-      "type",
-      "audience",
-      "licenseId",
-      "fileId",
-      "serviceUrl",
-      "channel",
-      "licenseKey",
-      "secretVersion",
-      "createdAt",
-      "expiresAt",
-      "nonce",
-      "scope");
-
   private LicenseFileReader() {}
 
-  static LicenseAuthorization read(JsonNode root, LicenseFileReadOptions options) {
+  static void validate(JsonNode root, LicenseFileReadOptions options) {
     LicenseFileReadOptions readOptions = options == null ? new LicenseFileReadOptions() : options;
     if (root == null || !root.isObject() ||
         !ReleaseManifestVerifier.fieldSet(root).equals(TOP_LEVEL_FIELDS) ||
@@ -112,53 +91,6 @@ final class LicenseFileReader {
     verifier.update(signedBody, 0, signedBody.length);
     if (!verifier.verifySignature(signatureBytes)) {
       throw fail("license_file_signature_invalid", "License file signature is invalid", 401);
-    }
-    if (readOptions.licenseFilePassphrase == null || readOptions.licenseFilePassphrase.length() < 12) {
-      throw fail("license_file_locked", "License file passphrase is missing or too short", 401);
-    }
-    JsonNode payload = decrypt(document, readOptions.licenseFilePassphrase);
-    String licenseKey = text(payload, "licenseKey");
-    if (!ReleaseManifestVerifier.fieldSet(payload).equals(SECRET_FIELDS)) {
-      throw fail("license_file_payload_invalid", "License file payload contains unsupported claims");
-    }
-    if (integer(payload, "schemaVersion") != 2 ||
-        !"slybrowser-license-secret".equals(text(payload, "type")) ||
-        !text(document, "audience").equals(text(payload, "audience")) ||
-        !licenseId.equals(text(payload, "licenseId")) ||
-        !text(document, "fileId").equals(text(payload, "fileId")) ||
-        !serviceUrl.equals(normalizeServiceUrl(text(payload, "serviceUrl"), readOptions.allowInsecureLocalhost)) ||
-        !"stable".equals(text(payload, "channel")) ||
-        integer(payload, "secretVersion") != 1 ||
-        !text(document, "expiresAt").equals(text(payload, "expiresAt")) ||
-        !expectedScope.equals(text(payload, "scope")) ||
-        !licenseKey.matches("^sly_live_[0-9a-f-]{36}\\.[A-Za-z0-9_-]{40,}$") ||
-        !licenseKey.startsWith("sly_live_" + licenseId + ".")) {
-      throw fail("license_file_payload_invalid", "License file payload does not match its public header");
-    }
-    return new LicenseAuthorization(serviceUrl, licenseKey, "stable");
-  }
-
-  private static JsonNode decrypt(ObjectNode document, String passphrase) {
-    JsonNode encryption = object(document.get("encryption"));
-    JsonNode kdf = object(encryption.get("kdf"));
-    try {
-      byte[] salt = decode(text(kdf, "salt"), 16);
-      byte[] nonce = decode(text(encryption, "nonce"), 12);
-      byte[] tag = decode(text(document, "tag"), 16);
-      byte[] ciphertext = decode(text(document, "ciphertext"), 64 * 1024);
-      if (salt.length != 16 || nonce.length != 12 || tag.length != 16) {
-        throw new IllegalArgumentException("invalid encryption parameter length");
-      }
-      byte[] key = SCrypt.generate(passphrase.getBytes(StandardCharsets.UTF_8), salt, 16_384, 8, 1, 32);
-      byte[] encrypted = new byte[ciphertext.length + tag.length];
-      System.arraycopy(ciphertext, 0, encrypted, 0, ciphertext.length);
-      System.arraycopy(tag, 0, encrypted, ciphertext.length, tag.length);
-      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-      cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
-      cipher.updateAAD(CanonicalJson.serialize(publicHeader(document)));
-      return CanonicalJson.MAPPER.readTree(cipher.doFinal(encrypted));
-    } catch (GeneralSecurityException | java.io.IOException | IllegalArgumentException error) {
-      throw fail("license_file_locked", "License file cannot be decrypted", 401);
     }
   }
 

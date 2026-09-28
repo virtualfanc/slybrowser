@@ -1,7 +1,7 @@
 # SlyBrowser for Python
 
 ```sh
-pip install slybrowser==0.2.0
+pip install slybrowser==0.3.0
 ```
 
 `launch()` accepts the authorization file plus optional `profile`, `launch`, and

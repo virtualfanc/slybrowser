@@ -1,0 +1,92 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+
+import * as playwright from "playwright-core";
+import puppeteer from "puppeteer-core";
+import {
+  launchPlaywright,
+  launchPuppeteer,
+} from "../../packages/node/dist/index.js";
+
+const options = parseArgs(process.argv.slice(2));
+for (const name of [
+  "backend",
+  "authorizationFile",
+  "output",
+]) {
+  if (!options[name]) throw new Error(`--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
+}
+if (!["playwright", "puppeteer"].includes(options.backend)) {
+  throw new Error("--backend must be playwright or puppeteer");
+}
+
+const headed = options.headed === true;
+const started = Date.now();
+
+let runtime;
+try {
+  if (options.backend === "playwright") {
+    runtime = await launchPlaywright(playwright, options.authorizationFile, {
+      launch: { headless: !headed },
+      humanize: { enabled: true, preset: "careful", seed: 52525 },
+    });
+  } else {
+    runtime = await launchPuppeteer(puppeteer, options.authorizationFile, {
+      launch: { headless: !headed },
+      humanize: { enabled: true, preset: "careful", seed: 52525 },
+    });
+  }
+  const page = await runtime.newPage();
+  await page.goto(dataUrl(`<title>sly-node-${options.backend}-ok</title><button id="target">Target</button>`));
+  const title = await page.title();
+  const signals = await page.evaluate(() => ({
+    webdriver: navigator.webdriver,
+    userAgent: navigator.userAgent,
+    chromeType: typeof window.chrome,
+    dpr: devicePixelRatio,
+  }));
+  if (title !== `sly-node-${options.backend}-ok`) throw new Error(`unexpected title ${title}`);
+  if (signals.webdriver === true) throw new Error("navigator.webdriver is true");
+  if (signals.chromeType !== "object") throw new Error(`window.chrome type is ${signals.chromeType}`);
+  await writeJson(options.output, {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    status: "PASS",
+    language: "node",
+    backend: options.backend,
+    headed,
+    browserVersion: runtime.licenseRuntime?.browserVersion ?? null,
+    versionAudit: runtime.licenseRuntime?.versionAudit ?? null,
+    signals,
+    durationMs: Date.now() - started,
+  });
+} finally {
+  if (runtime) await runtime.close().catch(() => undefined);
+}
+
+function parseArgs(args) {
+  const result = { headed: false };
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--headed") {
+      result.headed = true;
+      continue;
+    }
+    if (!value.startsWith("--")) throw new Error(`Unexpected argument: ${value}`);
+    const key = value.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    result[key] = resolve(args[++index]);
+    if (key.endsWith("KeyId") || key.endsWith("KeyHex") || key.endsWith("Base64url") || key === "backend") {
+      result[key] = args[index];
+    }
+  }
+  return result;
+}
+
+function dataUrl(markup) {
+  return `data:text/html;charset=utf-8;base64,${Buffer.from(markup, "utf8").toString("base64")}`;
+}
+
+async function writeJson(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+}

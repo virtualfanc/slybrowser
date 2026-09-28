@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 
@@ -25,24 +22,7 @@ internal static class LicenseFileReader
         "tag",
         "signature",
     };
-    private static readonly HashSet<string> SecretFields = new(StringComparer.Ordinal)
-    {
-        "schemaVersion",
-        "type",
-        "audience",
-        "licenseId",
-        "fileId",
-        "serviceUrl",
-        "channel",
-        "licenseKey",
-        "secretVersion",
-        "createdAt",
-        "expiresAt",
-        "nonce",
-        "scope",
-    };
-
-    public static LicenseAuthorization Read(JsonElement root, LicenseFileReadOptions? options)
+    public static void Validate(JsonElement root, LicenseFileReadOptions? options)
     {
         options ??= new LicenseFileReadOptions();
         if (root.ValueKind != JsonValueKind.Object ||
@@ -100,50 +80,6 @@ internal static class LicenseFileReader
         verifier.BlockUpdate(signedBody, 0, signedBody.Length);
         if (!verifier.VerifySignature(signatureBytes))
             throw Fail("license_file_signature_invalid", "License file signature is invalid", 401);
-        if (options.LicenseFilePassphrase is not { Length: >= 12 })
-            throw Fail("license_file_locked", "License file passphrase is missing or too short", 401);
-        JsonElement payload = Decrypt(normalizedRoot, options.LicenseFilePassphrase);
-        string licenseKey = RequiredString(payload, "licenseKey");
-        if (!PropertySet(payload).SetEquals(SecretFields))
-            throw Fail("license_file_payload_invalid", "License file payload contains unsupported claims");
-        if (RequiredInteger(payload, "schemaVersion") != 2 ||
-            RequiredString(payload, "type") != "slybrowser-license-secret" ||
-            RequiredString(payload, "audience") != RequiredString(normalizedRoot, "audience") ||
-            RequiredString(payload, "licenseId") != licenseId ||
-            RequiredString(payload, "fileId") != RequiredString(normalizedRoot, "fileId") ||
-            NormalizeServiceUrl(RequiredString(payload, "serviceUrl"), options.AllowInsecureLocalhost) != serviceUrl ||
-            RequiredString(payload, "channel") != "stable" ||
-            RequiredInteger(payload, "secretVersion") != 1 ||
-            RequiredString(payload, "expiresAt") != RequiredString(normalizedRoot, "expiresAt") ||
-            RequiredString(payload, "scope") != expectedScope ||
-            !System.Text.RegularExpressions.Regex.IsMatch(licenseKey, @"^sly_live_[0-9a-f-]{36}\.[A-Za-z0-9_-]{40,}$") ||
-            !licenseKey.StartsWith($"sly_live_{licenseId}.", StringComparison.Ordinal))
-            throw Fail("license_file_payload_invalid", "License file payload does not match its public header");
-        return new LicenseAuthorization(serviceUrl, licenseKey);
-    }
-
-    private static JsonElement Decrypt(JsonElement document, string passphrase)
-    {
-        JsonElement encryption = RequiredObject(document, "encryption");
-        JsonElement kdf = RequiredObject(encryption, "kdf");
-        try
-        {
-            byte[] salt = Decode(RequiredString(kdf, "salt"), 16);
-            byte[] nonce = Decode(RequiredString(encryption, "nonce"), 12);
-            byte[] tag = Decode(RequiredString(document, "tag"), 16);
-            byte[] ciphertext = Decode(RequiredString(document, "ciphertext"), 64 * 1024);
-            if (salt.Length != 16 || nonce.Length != 12 || tag.Length != 16)
-                throw new FormatException("invalid encryption parameter length");
-            byte[] key = SCrypt.Generate(Encoding.UTF8.GetBytes(passphrase), salt, 16_384, 8, 1, 32);
-            byte[] plaintext = new byte[ciphertext.Length];
-            using AesGcm aes = new(key, 16);
-            aes.Decrypt(nonce, ciphertext, tag, plaintext, CanonicalJson.Serialize(JsonSerializer.SerializeToElement(PublicHeader(document))));
-            return JsonDocument.Parse(plaintext).RootElement.Clone();
-        }
-        catch (Exception exception) when (exception is CryptographicException or JsonException or FormatException or ArgumentException)
-        {
-            throw Fail("license_file_locked", "License file cannot be decrypted", 401, exception);
-        }
     }
 
     private static Dictionary<string, object?> PublicHeader(JsonElement document) => new(StringComparer.Ordinal)

@@ -9,6 +9,7 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,9 @@ import java.util.UUID;
 
 public final class LicenseServiceClient {
   private static final int NETWORK_TIMEOUT_MILLIS = 30_000;
+  private static final long ARTIFACT_DEADLINE_NANOS = 90L * 60 * 1_000_000_000;
+  private static final int[] ARTIFACT_BACKOFF_MILLIS = {1_000, 2_000};
+  private static final Set<Integer> ARTIFACT_RETRY_STATUSES = Set.of(429, 502, 503, 504);
   private static final Set<String> PLANS = Set.of("free", "basic", "pro", "max", "ultra");
   private static final Set<String> SAFE_ERROR_DETAIL_FIELDS = Set.of(
       "state",
@@ -56,7 +60,9 @@ public final class LicenseServiceClient {
       if (raw.length > 64 * 1024) throw fail("authorization_invalid", "Authorization file is too large");
       JsonNode root = CanonicalJson.MAPPER.readTree(raw);
       if (root != null && root.isObject() && root.has("schemaVersion") && root.get("schemaVersion").asInt() == 2) {
-        return LicenseFileReader.read(root, options);
+        LicenseFileReadOptions readOptions = options == null ? new LicenseFileReadOptions() : options;
+        LicenseFileReader.validate(root, readOptions);
+        return resolveEncryptedLicenseFile(root, readOptions);
       }
       return parseAuthorization(root, options != null && options.allowInsecureLocalhost);
     } catch (LicenseServiceException error) {
@@ -64,6 +70,45 @@ public final class LicenseServiceClient {
     } catch (IOException error) {
       throw fail("authorization_invalid", "Authorization file is not valid JSON", 0, error);
     }
+  }
+
+  private static LicenseAuthorization resolveEncryptedLicenseFile(JsonNode document, LicenseFileReadOptions options) {
+    String serviceUrl = text(document, "serviceUrl").replaceAll("/+$", "");
+    if (!options.trustedServiceUrls.stream().map(value -> value.replaceAll("/+$", "")).anyMatch(serviceUrl::equals)) {
+      throw fail("license_file_untrusted_origin", "License file service URL is not trusted", 403);
+    }
+    byte[] body;
+    try {
+      body = CanonicalJson.MAPPER.writeValueAsBytes(Map.of("schemaVersion", 1, "licenseFile", document));
+    } catch (JsonProcessingException error) {
+      throw fail("authorization_invalid", "License file cannot be serialized", 0, error);
+    }
+    LicenseServiceClientOptions.JsonTransport transport = options.transport == null
+        ? LicenseServiceClient::defaultTransport : options.transport;
+    LicenseServiceClientOptions.TransportResponse response = transport.send(
+        "POST", serviceUrl + "/v1/license-files/authorization",
+        Map.of("content-type", "application/json", "user-agent", "SlyBrowserJavaSDK/license-file"), body);
+    if (response.body == null || response.body.length > 64 * 1024) {
+      throw fail("license_service_invalid_response", "License-file authorization response is invalid", response.status);
+    }
+    JsonNode value;
+    try {
+      value = CanonicalJson.MAPPER.readTree(response.body);
+    } catch (IOException error) {
+      throw fail("license_service_invalid_response", "License-file authorization service returned invalid JSON", response.status, error);
+    }
+    if (response.status != 200) {
+      JsonNode remoteError = value == null ? null : value.get("error");
+      String code = safeRemoteErrorCode(remoteError);
+      throw fail(code, "License-file authorization service rejected the file", response.status);
+    }
+    LicenseAuthorization authorization = parseAuthorization(value, options.allowInsecureLocalhost);
+    String licenseId = text(document, "licenseId");
+    if (!serviceUrl.equals(authorization.serviceUrl) ||
+        !authorization.licenseKey.startsWith("sly_live_" + licenseId + ".")) {
+      throw fail("license_service_invalid_response", "License-file authorization does not match the signed file", response.status);
+    }
+    return authorization;
   }
 
   public LicenseInfo licenseInfo(CreateSessionOptions supplied) {
@@ -583,21 +628,71 @@ public final class LicenseServiceClient {
   }
 
   private static void defaultArtifactDownloader(String url, Map<String, String> headers, Path destination) {
-    HttpURLConnection connection = null;
-    try {
-      connection = openConnection(url, "GET", headers);
-      int status = connection.getResponseCode();
-      if (status != 200) {
-        throw fail("artifact_download_failed", "Artifact download failed with HTTP " + status, status);
+    if (Files.exists(destination)) throw fail("artifact_download_failed", "Artifact destination already exists");
+    long deadline = System.nanoTime() + ARTIFACT_DEADLINE_NANOS;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      HttpURLConnection connection = null;
+      boolean completed = false;
+      boolean created = false;
+      boolean retry = false;
+      try {
+        connection = openConnection(url, "GET", headers);
+        connection.setConnectTimeout(remainingDownloadMillis(deadline));
+        connection.setReadTimeout(remainingDownloadMillis(deadline));
+        int status = connection.getResponseCode();
+        if (status != 200) {
+          if (!ARTIFACT_RETRY_STATUSES.contains(status) || attempt == 2) {
+            throw fail("artifact_download_failed", "Artifact download failed with HTTP " + status, status);
+          }
+          retry = true;
+        } else {
+          try (InputStream input = connection.getInputStream()) {
+            OutputStream output;
+            try { output = Files.newOutputStream(destination, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE); }
+            catch (IOException diskError) { throw fail("artifact_download_failed", "Artifact destination open failed", 0, diskError); }
+            try (output) {
+              created = true;
+              byte[] chunk = new byte[1024 * 1024];
+              while (true) {
+                connection.setReadTimeout(remainingDownloadMillis(deadline));
+                int count = input.read(chunk);
+                if (count < 0) break;
+                try { output.write(chunk, 0, count); }
+                catch (IOException diskError) { throw fail("artifact_download_failed", "Artifact destination write failed", 0, diskError); }
+              }
+              remainingDownloadMillis(deadline);
+            }
+          }
+          completed = true;
+          return;
+        }
+      } catch (IOException error) {
+        if (attempt == 2) throw fail("artifact_download_failed", "Artifact download transport failed", 0, error);
+        retry = true;
+      } finally {
+        if (connection != null) connection.disconnect();
+        if (created && !completed) {
+          try { Files.deleteIfExists(destination); }
+          catch (IOException error) { throw fail("artifact_download_failed", "Partial artifact cleanup failed", 0, error); }
+        }
       }
-      try (InputStream input = connection.getInputStream(); OutputStream output = Files.newOutputStream(destination)) {
-        input.transferTo(output);
+      if (!retry) throw fail("artifact_download_failed", "Artifact download failed");
+      int backoff = ARTIFACT_BACKOFF_MILLIS[attempt];
+      if (System.nanoTime() >= deadline - backoff * 1_000_000L) {
+        throw fail("artifact_download_failed", "Artifact download exceeded 90 minutes");
       }
-    } catch (IOException error) {
-      throw fail("artifact_download_failed", "Artifact download failed", 0, error);
-    } finally {
-      if (connection != null) connection.disconnect();
+      try { Thread.sleep(backoff); }
+      catch (InterruptedException error) {
+        Thread.currentThread().interrupt();
+        throw fail("artifact_download_failed", "Artifact download interrupted", 0, error);
+      }
     }
+  }
+
+  private static int remainingDownloadMillis(long deadline) {
+    long remaining = (deadline - System.nanoTime()) / 1_000_000;
+    if (remaining <= 0) throw fail("artifact_download_failed", "Artifact download exceeded 90 minutes");
+    return (int) Math.min(remaining, Integer.MAX_VALUE);
   }
 
   private static HttpURLConnection openConnection(String url, String method, Map<String, String> headers)

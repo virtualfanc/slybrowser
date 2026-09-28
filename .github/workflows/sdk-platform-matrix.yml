@@ -1,0 +1,221 @@
+name: SDK platform matrix
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: Run the frozen candidate compatibility matrix
+        type: boolean
+        default: false
+      candidate_sha:
+        description: Exact checked-out SHA for full qualification
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-platform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scope:
+    name: Repository guard and CI scope
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.select.outputs.node }}
+      python: ${{ steps.select.outputs.python }}
+      java: ${{ steps.select.outputs.java }}
+      dotnet: ${{ steps.select.outputs.dotnet }}
+      audit: ${{ steps.select.outputs.audit }}
+      node_matrix: ${{ steps.select.outputs.node_matrix }}
+      python_matrix: ${{ steps.select.outputs.python_matrix }}
+      java_matrix: ${{ steps.select.outputs.java_matrix }}
+      dotnet_matrix: ${{ steps.select.outputs.dotnet_matrix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Check secrets, generated artifacts, and AI temporary files
+        shell: pwsh
+        run: ./scripts/Test-Repository.ps1 -RepositoryGuardOnly
+      - name: Select affected binding checks
+        id: select
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          FULL_MATRIX: ${{ inputs.full_matrix || 'false' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || '' }}
+        run: |
+          args=()
+          if [[ "$FULL_MATRIX" == "true" ]]; then args+=(--full --candidate "$CANDIDATE_SHA"); fi
+          node scripts/ci/select-checks.mjs --base "$BASE_SHA" --head "$HEAD_SHA" "${args[@]}"
+
+  lint-typecheck:
+    name: Node lint and typecheck
+    needs: [scope]
+    if: ${{ needs.scope.outputs.node == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm --filter slybrowser typecheck
+
+  node:
+    name: Node ${{ matrix.version }} / ${{ matrix.os }}
+    needs: [scope]
+    if: ${{ needs.scope.outputs.node == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scope.outputs.node_matrix) }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.version }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter slybrowser test
+
+  dependency-audit:
+    name: Production dependency audit
+    needs: [scope]
+    if: ${{ needs.scope.outputs.audit == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level high
+      - run: pnpm licenses list --prod --json > license-inventory.json
+      - run: test -s license-inventory.json
+
+  python:
+    name: Python ${{ matrix.version }} / ${{ matrix.os }}
+    needs: [scope]
+    if: ${{ needs.scope.outputs.python == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scope.outputs.python_matrix) }}
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.version }}
+          cache: pip
+          cache-dependency-path: packages/python/pyproject.toml
+      - run: python -m pip install --disable-pip-version-check -e . pytest
+      - run: python -m pytest -q
+
+  java:
+    name: Java ${{ matrix.version }} / ${{ matrix.os }}
+    needs: [scope]
+    if: ${{ needs.scope.outputs.java == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scope.outputs.java_matrix) }}
+    defaults:
+      run:
+        working-directory: packages/java
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.version }}
+          cache: maven
+      - run: mvn --batch-mode --no-transfer-progress test
+
+  dotnet:
+    name: .NET ${{ matrix.version }} / ${{ matrix.os }}
+    needs: [scope]
+    if: ${{ needs.scope.outputs.dotnet == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scope.outputs.dotnet_matrix) }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: ${{ matrix.version }}
+      - run: dotnet test packages/dotnet/tests/SlyBrowser.Tests/SlyBrowser.Tests.csproj --configuration Release
+
+  sdk-summary:
+    name: SDK platform summary
+    if: ${{ always() }}
+    needs: [scope, lint-typecheck, node, python, java, dotnet, dependency-audit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every selected check
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          NODE_SELECTED: ${{ needs.scope.outputs.node }}
+          PYTHON_SELECTED: ${{ needs.scope.outputs.python }}
+          JAVA_SELECTED: ${{ needs.scope.outputs.java }}
+          DOTNET_SELECTED: ${{ needs.scope.outputs.dotnet }}
+          AUDIT_SELECTED: ${{ needs.scope.outputs.audit }}
+          LINT_RESULT: ${{ needs.lint-typecheck.result }}
+          NODE_RESULT: ${{ needs.node.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+          JAVA_RESULT: ${{ needs.java.result }}
+          DOTNET_RESULT: ${{ needs.dotnet.result }}
+          AUDIT_RESULT: ${{ needs.dependency-audit.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [[ "$NODE_SELECTED" == true ]]; then test "$LINT_RESULT" = success && test "$NODE_RESULT" = success; fi
+          if [[ "$PYTHON_SELECTED" == true ]]; then test "$PYTHON_RESULT" = success; fi
+          if [[ "$JAVA_SELECTED" == true ]]; then test "$JAVA_RESULT" = success; fi
+          if [[ "$DOTNET_SELECTED" == true ]]; then test "$DOTNET_RESULT" = success; fi
+          if [[ "$AUDIT_SELECTED" == true ]]; then test "$AUDIT_RESULT" = success; fi

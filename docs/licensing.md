@@ -1,6 +1,6 @@
 # SlyBrowser license file scheme
 
-Last updated: 2026-08-21
+Last updated: 2026-09-28
 
 This document freezes the license-file contract that payment, authorization
 delivery, SDK launch, signed downloads and native runtime enforcement must share.
@@ -43,9 +43,10 @@ entitlement checks:
    additional authenticated data.
 4. The file contains no price, PayNow ID, checkout URL, raw email, plan authority,
    paid-through authority, browser version authority or feature authority.
-5. The SDK verifies the container signature, decrypts the payload through an
-   approved unlock mode, and sends the license key only to a trusted SlyBrowser
-   API origin over TLS.
+5. The SDK validates the public fields, expiry, trusted origin and Ed25519
+   signature, then submits the intact file to the trusted authorization service
+   over TLS. The service alone decrypts the payload and returns a scoped
+   authorization for the current request.
 6. The service checks the entitlement, reserves concurrency and returns a
    signed runtime lease plus a signed release manifest.
 7. The SDK downloads only the selected artifact, verifies hashes and launches the
@@ -129,33 +130,19 @@ The decrypted payload is also canonical JSON:
 }
 ```
 
-The SDK must verify that decrypted `audience`, `licenseId`, `fileId`,
+The service must verify that decrypted `audience`, `licenseId`, `fileId`,
 `serviceUrl`, `channel` and `expiresAt` exactly match the public header. A
 payload copied into another public header, a public header edited around a valid
 ciphertext, or a payload that adds plan/feature/concurrency claims must fail.
 
-### Unlock modes
+### Online resolution
 
-There is no safe product-wide decryption key. The file supports explicit unlock
-modes, each with different operational tradeoffs:
-
-1. **Portable passphrase mode** — the customer supplies a passphrase when
-   downloading/importing the file. The SDK derives the wrapping key with
-   Argon2id and decrypts the payload. This is portable but requires a secret at
-   use time.
-2. **Machine-sealed mode** — after the first successful import, the SDK stores a
-   copy of the decrypted license secret in the OS credential store, such as
-   Windows DPAPI/Credential Manager, macOS Keychain or Linux libsecret/KWallet.
-   Future launches use the OS store and do not require the passphrase. Copying
-   the JSON file alone to another machine is not enough.
-3. **Enterprise/KMS mode** — unattended servers may use an enterprise secret
-   manager or KMS to provide the decrypt key at runtime. The key is never
-   embedded in SDK code, process arguments, GitHub Actions variables visible to
-   logs, or the license file itself.
-
-If no unlock mode can produce the key, the SDK fails with
-`license_file_locked`. SDKs must not silently fall back to a plaintext v1 file
-for paid production use.
+The four SDKs have no local decrypt-key, passphrase, KMS or machine-sealed
+authorization import. The file's encryption metadata remains signed public
+data; only the service interprets it and decrypts the secret. If the service
+rejects the file or cannot resolve its key, the SDK fails closed with the
+service's stable error code. A valid signature does not grant entitlement by
+itself.
 
 ### Verification order
 
@@ -164,12 +151,11 @@ SDKs and CLIs must follow this order:
 1. enforce file size limit and parse JSON;
 2. validate top-level field set and trusted `serviceUrl`;
 3. verify Ed25519 signature over the encrypted container;
-4. derive or unseal the decrypt key using the declared unlock mode;
-5. decrypt with AES-256-GCM using the canonical public header as AAD;
-6. verify decrypted payload fields match the public header;
-7. clear plaintext secret buffers as soon as the runtime session request is
-   prepared;
-8. call the trusted service origin with `Authorization: License <licenseKey>`.
+4. submit the intact signed file to `POST /v1/license-files/authorization` at
+   that same trusted origin;
+5. require a successful response whose service origin and license identity
+   match the signed file;
+6. use the returned authorization only for the subsequent online request.
 
 Any failure uses a stable error code and logs only non-secret identifiers such as
 `licenseId`, `fileId`, `keyId` and a redacted reason.
@@ -182,7 +168,7 @@ but does not reserve a runtime session, issue a download ticket or return a leas
 Node.js and Python CLIs wrap it as:
 
 ```text
-slybrowser license info --authorization account.slybrowser-sealed-license.json
+slybrowser license info --authorization account.slybrowser-license.json
 ```
 
 The response contains plan, effective plan, paid-through time, feature set,
@@ -208,8 +194,8 @@ profile paths or service access URLs.
 - `fileId` is public and non-secret; it exists only for support/audit
   correlation.
 - `encryption.algorithm` must be `AES-256-GCM` for v2.
-- `encryption.kdf.name` must be one of the approved unlock modes; public paid
-  launch starts with `argon2id`.
+- `encryption.kdf.name` must be a supported signed format identifier. The SDK
+  validates its shape but does not derive a decrypt key.
 - `ciphertext`, `tag`, `nonce` and KDF salt must be valid unpadded base64url.
 - `signature.keyId` must be trusted and the Ed25519 signature must verify.
 - Unknown fields fail closed unless the schema explicitly adds them later.
@@ -263,7 +249,7 @@ Migration policy:
 
 ## 5. Runtime session request
 
-The SDK verifies and decrypts the license file, then sends:
+After online file authorization, the SDK sends:
 
 ```http
 POST /v2/runtime/sessions
@@ -375,8 +361,8 @@ Copying only `chromedriver.exe`, the browser ZIP, SDK code, a temporary lease
 file, or an old release cache is insufficient:
 
 - copied binaries cannot mint a fresh server session;
-- copied encrypted license files cannot reveal the license key without the
-  passphrase, OS credential store or enterprise KMS unlock material;
+- copied encrypted license files cannot reveal the license key locally; the
+  authorization service can revoke or reject them;
 - copied leases expire quickly and are bound to exact artifact hashes;
 - replayed `startupId` returns one reservation rather than extra capacity;
 - expired, downgraded, revoked or refunded entitlements fail closed;
@@ -397,8 +383,7 @@ be marketed as impossible to crack.
   must not accept `--license-key=...`.
 - SDKs must not put the license key in process arguments, environment variables,
   analytics events, exceptions, crash dumps, browser profiles or test snapshots.
-- SDKs must not persist decrypted license secrets outside approved OS
-  credential stores or enterprise/KMS integrations.
+- SDKs must not decrypt the file or persist returned authorization secrets.
 - Temporary runtime lease files are short-lived, owner-only and removed after
   launch handoff.
 - Server logs store HMAC/fingerprint values, license ID, file ID, session ID and
@@ -461,36 +446,33 @@ P0 before public paid checkout:
 
 - define and test a v2 encrypted license-file JSON schema;
 - generate encrypted/authenticated v2 files with AES-256-GCM and Ed25519;
-- verify signatures, decrypt payloads and validate header/payload binding in
-  Node.js, Python, Java and .NET readers;
-- implement at least portable passphrase mode and one machine-sealed mode for
-  Windows before paid public launch;
+- verify signed public fields and expiry in Node.js, Python, Java and .NET;
+- resolve the intact file at the trusted service, which validates payload
+  binding and current entitlement;
 - enforce trusted service origins before any network request containing
   `licenseKey`;
 - generate v2 files from the service/admin issue path;
 - keep v1 read compatibility with warnings during private preview;
 - ensure file generation never writes email, PayNow IDs, price or plan authority;
-- ensure plaintext `licenseKey` exists only in bounded service/SDK memory and
-  approved OS credential stores, never in generated files, logs or attachments;
+- ensure plaintext `licenseKey` exists only in bounded service/SDK memory,
+  never in generated files, logs or attachments;
 - add redaction tests for logs, errors and CLI output;
 - add N/N+1 concurrency tests per plan;
 - add revoke, hold, expiry, downgrade, replay and clock-skew tests;
 - add native activation and heartbeat tests before unlocking paid-only features;
 - update the payment checkout flow to create entitlements and email the v2 file.
 
-2026-08-22 implementation note: the payment service now creates a
-`sly-portable-scrypt-v1` encrypted license-file attachment after verified first
-payment, and the Node.js, Python, .NET and Java SDK readers verify/decrypt that
-portable passphrase mode after signature and trusted-origin checks. The per-customer
-passphrase capture flow remains a launch requirement. The Node.js and Python SDKs now
-support Windows DPAPI current-user sealed authorization import; Java/.NET sealed import
-parity and enterprise/KMS unlock mode remain public-launch blockers.
+2026-09-28 implementation note: all four local SDK readers verify signed
+certificate metadata and request online authorization. Local passphrase
+decryption and Windows DPAPI sealed-authorization import have been removed from
+the source candidate. Public release and clean-install acceptance are separate
+gates.
 
 P1 after controlled preview:
 
 - support explicit license key rotation for compromised files;
 - support enterprise trusted-origin allowlists;
-- support enterprise/KMS unlock mode for unattended server fleets;
+- support enterprise trusted-origin policy for unattended server fleets;
 - add optional device-count policy with privacy-preserving hashes;
 - add customer self-service reissue/resend with verified identity.
 
@@ -498,11 +480,12 @@ P1 after controlled preview:
 
 The license-file scheme is ready for payment integration when:
 
-- a fixture encrypted v2 file verifies and decrypts in every SDK language;
+- a fixture encrypted v2 file verifies in every SDK language and resolves at
+  the trusted authorization service;
 - tampering with `serviceUrl`, `channel`, `licenseId`, `fileId`, `encryption`,
   `ciphertext`, `tag` or `signature` fails before network access;
-- copying the encrypted file to a machine without the passphrase, OS credential
-  secret or enterprise/KMS unlock material returns `license_file_locked`;
+- a missing, revoked or unresolvable server key returns a stable service error
+  and creates no session or download ticket;
 - a valid file creates exactly one reserved browser runtime session per
   `startupId`; the project WebDriver child process uses a separate
   `driverActivationTicket` under that same session;

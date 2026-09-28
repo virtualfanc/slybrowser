@@ -11,7 +11,7 @@ from . import __version__
 from .errors import LicenseServiceError
 from ._official_trust import LICENSE_FILE_KEYS, LICENSE_LEASE_KEYS, RELEASE_MANIFEST_KEYS
 from .licensed import prepare_latest_authorized_browser
-from .service import LicenseServiceClient, import_license_file_to_sealed_authorization, read_license_authorization
+from .service import LicenseServiceClient, read_license_authorization
 from .webdriver import default_driver_executable
 
 
@@ -90,16 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--update-kernel", action="store_true", help="actively update to the newest authorized version in range")
     install.add_argument("--version", help="exact browser version to install")
     install.add_argument("--rollback", action="store_true", help="select the newest authorized version at or before --version")
-    license_parser = subparsers.add_parser("license", help="manage local SlyBrowser license files")
+    license_parser = subparsers.add_parser("license", help="inspect SlyBrowser license files online")
     license_subparsers = license_parser.add_subparsers(dest="license_command", required=True)
-    license_import = license_subparsers.add_parser("import", help="import a paid license file into Windows DPAPI sealed local storage")
-    license_import.add_argument("--input", required=True, help="encrypted v2 SlyBrowser license file from billing email")
-    license_import.add_argument("--output", required=True, help="sealed authorization file to create")
-    license_import.add_argument("--passphrase", required=True, help="license file passphrase")
-    license_import.add_argument("--trusted-service-url", action="append", dest="trusted_service_urls", help="trusted license service origin")
     license_info = license_subparsers.add_parser("info", help="print redacted online license diagnostics")
-    license_info.add_argument("--authorization", required=True, help="authorization, encrypted license or sealed license file")
-    license_info.add_argument("--passphrase", help="license file passphrase, when reading encrypted email attachments")
+    license_info.add_argument("--authorization", required=True, help="signed license file")
     license_info.add_argument("--trusted-service-url", action="append", dest="trusted_service_urls", help="trusted license service origin")
     license_info.add_argument("--kernel-major", type=_kernel_major, help="major version to stay within, or latest")
     license_info.add_argument("--update-kernel", action="store_true", help="check for the newest authorized version in range")
@@ -162,7 +156,6 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 authorization = read_license_authorization(
                     args.authorization,
-                    license_file_passphrase=args.passphrase,
                     license_file_trusted_keys=LICENSE_FILE_KEYS,
                     trusted_service_urls=tuple(args.trusted_service_urls or ("https://api.slybrowser.com",)),
                 )
@@ -183,22 +176,6 @@ def main(argv: list[str] | None = None) -> int:
             except LicenseServiceError as error:
                 print(json.dumps(_license_service_error_output(error), ensure_ascii=False, indent=2))
                 return 1
-        if args.license_command == "import":
-            result = import_license_file_to_sealed_authorization(
-                args.input,
-                args.output,
-                license_file_passphrase=args.passphrase,
-                license_file_trusted_keys=LICENSE_FILE_KEYS,
-                trusted_service_urls=tuple(args.trusted_service_urls or ("https://api.slybrowser.com",)),
-            )
-            print(json.dumps({
-                "output": str(result.output),
-                "serviceUrl": result.service_url,
-                "channel": result.channel,
-                "protection": result.protection,
-                "licenseKeySha256": result.license_key_sha256,
-            }, ensure_ascii=False, indent=2))
-            return 0
     raise AssertionError(f"unhandled command: {args.command}")
 
 

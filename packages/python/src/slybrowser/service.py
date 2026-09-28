@@ -3,22 +3,19 @@
 from __future__ import annotations
 
 import json
-import hashlib
 import os
 import re
-import shutil
-import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .canonical import canonical_json, decode_base64url, encode_base64url
+from .canonical import canonical_json, decode_base64url
 from .errors import LicenseServiceError
 from .license import LicenseClaims, LicenseVerifier
 from .manifest import ReleaseArtifact, ReleaseManifest, is_sdk_compatible, verify_release_manifest
@@ -33,6 +30,9 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+_ARTIFACT_DEADLINE_SECONDS = 90 * 60
+_ARTIFACT_BACKOFF_SECONDS = (1, 2)
+_ARTIFACT_RETRY_STATUSES = frozenset({429, 502, 503, 504})
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,18 +45,8 @@ class LicenseAuthorization:
 @dataclass(frozen=True, slots=True)
 class LicenseFileReadOptions:
     allow_insecure_localhost: bool = False
-    license_file_passphrase: str | None = None
     license_file_trusted_keys: Mapping[str, bytes] | None = None
     trusted_service_urls: tuple[str, ...] = ("https://api.slybrowser.com",)
-
-
-@dataclass(frozen=True, slots=True)
-class SealedLicenseImportResult:
-    output: Path
-    service_url: str
-    channel: str
-    protection: str
-    license_key_sha256: str
 
 
 @dataclass(slots=True)
@@ -403,23 +393,6 @@ _LICENSE_FILE_TOP_LEVEL_FIELDS = {
     "tag",
     "signature",
 }
-_LICENSE_FILE_SECRET_FIELDS = {
-    "schemaVersion",
-    "type",
-    "audience",
-    "licenseId",
-    "fileId",
-    "serviceUrl",
-    "channel",
-    "licenseKey",
-    "secretVersion",
-    "createdAt",
-    "expiresAt",
-    "nonce",
-    "scope",
-}
-
-
 def _normalize_service_url(value: str, *, allow_insecure_localhost: bool = False) -> str:
     parsed = urllib.parse.urlparse(value)
     local = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
@@ -480,7 +453,7 @@ def _signed_license_file_body(document: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _parse_encrypted_license_file(value: object, options: LicenseFileReadOptions) -> LicenseAuthorization:
+def _validate_encrypted_license_file(value: object, options: LicenseFileReadOptions) -> tuple[str, str]:
     document = _required_object(value)
     if (
         set(document) != _LICENSE_FILE_TOP_LEVEL_FIELDS
@@ -553,267 +526,13 @@ def _parse_encrypted_license_file(value: object, options: LicenseFileReadOptions
         )
     except (InvalidSignature, ValueError) as exc:
         raise _fail("license_file_signature_invalid", "License file signature is invalid", 401) from exc
-    passphrase = options.license_file_passphrase
-    if not isinstance(passphrase, str) or len(passphrase) < 12:
-        raise _fail("license_file_locked", "License file passphrase is missing or too short", 401)
-    try:
-        from cryptography.exceptions import InvalidTag
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        salt = decode_base64url(_required_text(kdf, "salt", 64), max_bytes=16)
-        nonce = decode_base64url(_required_text(encryption, "nonce", 64), max_bytes=12)
-        tag = decode_base64url(_required_text(document, "tag", 64), max_bytes=16)
-        ciphertext = decode_base64url(_required_text(document, "ciphertext", 64 * 1024), max_bytes=64 * 1024)
-        if len(salt) != 16 or len(nonce) != 12 or len(tag) != 16:
-            raise ValueError("invalid encryption parameter length")
-        key = hashlib.scrypt(
-            passphrase.encode("utf-8"),
-            salt=salt,
-            n=16_384,
-            r=8,
-            p=1,
-            dklen=32,
-            maxmem=64 * 1024 * 1024,
-        )
-        payload = json.loads(AESGCM(key).decrypt(
-            nonce,
-            ciphertext + tag,
-            canonical_json(_public_license_file_header(document)),
-        ))
-    except (InvalidTag, ValueError, json.JSONDecodeError) as exc:
-        raise _fail("license_file_locked", "License file cannot be decrypted", 401) from exc
-    payload = _required_object(payload)
-    if set(payload) != _LICENSE_FILE_SECRET_FIELDS:
-        raise _fail("license_file_payload_invalid", "License file payload contains unsupported claims")
-    license_key = _required_text(payload, "licenseKey", 256)
-    if (
-        payload.get("schemaVersion") != 2
-        or payload.get("type") != "slybrowser-license-secret"
-        or payload.get("audience") != document.get("audience")
-        or payload.get("licenseId") != license_id
-        or payload.get("fileId") != document.get("fileId")
-        or _normalize_service_url(_required_text(payload, "serviceUrl"), allow_insecure_localhost=options.allow_insecure_localhost) != service_url
-        or payload.get("channel") != "stable"
-        or payload.get("secretVersion") != 1
-        or payload.get("expiresAt") != document.get("expiresAt")
-        or payload.get("scope") != expected_scope
-        or not re.fullmatch(r"sly_live_[0-9a-f-]{36}\.[A-Za-z0-9_-]{40,}", license_key)
-        or not license_key.startswith(f"sly_live_{license_id}.")
-    ):
-        raise _fail("license_file_payload_invalid", "License file payload does not match its public header")
-    return LicenseAuthorization(service_url, license_key)
-
-
-_SEALED_LICENSE_TOP_LEVEL_FIELDS = {
-    "schemaVersion",
-    "type",
-    "audience",
-    "serviceUrl",
-    "channel",
-    "sealedAt",
-    "licenseKeySha256",
-    "protection",
-    "ciphertext",
-}
-
-
-def _license_key_sha256(license_key: str) -> str:
-    return hashlib.sha256(license_key.encode("utf-8")).hexdigest()
-
-
-def _sealed_license_entropy(document: Mapping[str, Any]) -> bytes:
-    return "\0".join((
-        "slybrowser-sealed-license-v1",
-        _required_text(document, "serviceUrl"),
-        _required_text(document, "channel", 16),
-        _required_text(document, "licenseKeySha256", 64),
-    )).encode("utf-8")
-
-
-def _assert_trusted_authorization_origin(service_url: str, options: LicenseFileReadOptions) -> None:
-    trusted_service_urls = tuple(
-        _normalize_service_url(url, allow_insecure_localhost=options.allow_insecure_localhost)
-        for url in options.trusted_service_urls
-    )
-    if service_url not in trusted_service_urls:
-        raise _fail("license_file_untrusted_origin", "License file service URL is not trusted", 403)
-
-
-def _windows_dpapi(operation: str, data: bytes, entropy: bytes) -> bytes:
-    if sys.platform != "win32":
-        raise _fail("sealed_license_unsupported", "Windows DPAPI sealed license files are only supported on Windows", 400)
-    try:
-        import ctypes
-        from ctypes import wintypes
-    except ImportError as exc:
-        raise _fail("sealed_license_unsupported", "Windows DPAPI is unavailable", 400) from exc
-
-    class DataBlob(ctypes.Structure):
-        _fields_ = [
-            ("cbData", wintypes.DWORD),
-            ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
-        ]
-
-    def blob(value: bytes) -> tuple[DataBlob, Any]:
-        buffer = ctypes.create_string_buffer(value)
-        return DataBlob(len(value), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))), buffer
-
-    input_blob, input_buffer = blob(data)
-    entropy_blob, entropy_buffer = blob(entropy)
-    output_blob = DataBlob()
-    crypt32 = ctypes.windll.crypt32
-    kernel32 = ctypes.windll.kernel32
-    if operation == "protect":
-        ok = crypt32.CryptProtectData(
-            ctypes.byref(input_blob),
-            None,
-            ctypes.byref(entropy_blob),
-            None,
-            None,
-            0,
-            ctypes.byref(output_blob),
-        )
-    elif operation == "unprotect":
-        ok = crypt32.CryptUnprotectData(
-            ctypes.byref(input_blob),
-            None,
-            ctypes.byref(entropy_blob),
-            None,
-            None,
-            0,
-            ctypes.byref(output_blob),
-        )
-    else:
-        raise _fail("sealed_license_unsupported", "Unsupported sealed license operation", 400)
-    _ = (input_buffer, entropy_buffer)
-    if not ok:
-        code = "sealed_license_locked" if operation == "unprotect" else "sealed_license_invalid"
-        raise _fail(code, "Sealed license file cannot be decrypted on this Windows user or machine", 401)
-    try:
-        return ctypes.string_at(output_blob.pbData, output_blob.cbData)
-    finally:
-        if output_blob.pbData:
-            kernel32.LocalFree(output_blob.pbData)
-
-
-def _parse_sealed_license_file(value: object, options: LicenseFileReadOptions) -> LicenseAuthorization:
-    document = _required_object(value)
-    if (
-        set(document) != _SEALED_LICENSE_TOP_LEVEL_FIELDS
-        or document.get("schemaVersion") != 3
-        or document.get("type") != "slybrowser-sealed-authorization"
-        or document.get("audience") != "slybrowser"
-    ):
-        raise _fail("sealed_license_invalid", "Sealed license file fields are invalid")
-    service_url = _normalize_service_url(
-        _required_text(document, "serviceUrl"),
-        allow_insecure_localhost=options.allow_insecure_localhost,
-    )
-    _assert_trusted_authorization_origin(service_url, options)
-    document = {**dict(document), "serviceUrl": service_url}
-    if _required_text(document, "channel", 16) != "stable":
-        raise _fail("sealed_license_invalid", "Sealed license channel is invalid")
-    if not isinstance(_parse_timestamp(_required_text(document, "sealedAt", 64)), float):
-        raise _fail("sealed_license_invalid", "Sealed license timestamp is invalid")
-    import re
-    fingerprint = _required_text(document, "licenseKeySha256", 64)
-    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
-        raise _fail("sealed_license_invalid", "Sealed license fingerprint is invalid")
-    protection = _required_object(document.get("protection"))
-    if (
-        set(protection) != {"provider", "scope"}
-        or protection.get("provider") != "windows-dpapi"
-        or protection.get("scope") != "current-user"
-    ):
-        raise _fail("sealed_license_unsupported", "Sealed license protection is not supported", 400)
-    try:
-        ciphertext = decode_base64url(_required_text(document, "ciphertext", 64 * 1024), max_bytes=64 * 1024)
-        payload = json.loads(_windows_dpapi("unprotect", ciphertext, _sealed_license_entropy(document)))
-    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-        raise _fail("sealed_license_locked", "Sealed license file cannot be decrypted on this Windows user or machine", 401) from exc
-    authorization = _parse_authorization(payload, allow_insecure_localhost=options.allow_insecure_localhost)
-    if (
-        authorization.service_url != service_url
-        or authorization.channel != "stable"
-        or _license_key_sha256(authorization.license_key) != fingerprint
-    ):
-        raise _fail("sealed_license_mismatch", "Sealed license payload does not match its public header", 400)
-    return authorization
-
-
-def import_license_file_to_sealed_authorization(
-    input_path: str | Path,
-    output_path: str | Path,
-    *,
-    allow_insecure_localhost: bool = False,
-    license_file_passphrase: str | None = None,
-    license_file_trusted_keys: Mapping[str, bytes] | None = None,
-    trusted_service_urls: tuple[str, ...] = ("https://api.slybrowser.com",),
-) -> SealedLicenseImportResult:
-    raw = Path(input_path).expanduser().resolve().read_bytes()
-    if len(raw) > 64 * 1024:
-        raise _fail("authorization_invalid", "Authorization file is too large")
-    try:
-        parsed = json.loads(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise _fail("authorization_invalid", "Authorization file is not valid JSON") from error
-    if not isinstance(parsed, Mapping) or parsed.get("schemaVersion") != 2:
-        raise _fail("license_file_invalid", "Only encrypted v2 SlyBrowser license files can be imported", 400)
-    options = LicenseFileReadOptions(
-        allow_insecure_localhost=allow_insecure_localhost,
-        license_file_passphrase=license_file_passphrase,
-        license_file_trusted_keys=license_file_trusted_keys,
-        trusted_service_urls=trusted_service_urls,
-    )
-    authorization = _parse_encrypted_license_file(parsed, options)
-    _assert_trusted_authorization_origin(authorization.service_url, options)
-    fingerprint = _license_key_sha256(authorization.license_key)
-    sealed_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    document: dict[str, Any] = {
-        "schemaVersion": 3,
-        "type": "slybrowser-sealed-authorization",
-        "audience": "slybrowser",
-        "serviceUrl": authorization.service_url,
-        "channel": authorization.channel,
-        "sealedAt": sealed_at,
-        "licenseKeySha256": fingerprint,
-        "protection": {
-            "provider": "windows-dpapi",
-            "scope": "current-user",
-        },
-        "ciphertext": "",
-    }
-    document["ciphertext"] = encode_base64url(_windows_dpapi(
-        "protect",
-        json.dumps({
-            "schemaVersion": 1,
-            "serviceUrl": authorization.service_url,
-            "licenseKey": authorization.license_key,
-            "channel": authorization.channel,
-        }, separators=(",", ":"), sort_keys=True).encode("utf-8"),
-        _sealed_license_entropy(document),
-    ))
-    destination = Path(output_path).expanduser().resolve()
-    with destination.open("x", encoding="utf-8") as handle:
-        json.dump(document, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-    try:
-        os.chmod(destination, 0o600)
-    except OSError:
-        pass
-    return SealedLicenseImportResult(
-        output=destination,
-        service_url=authorization.service_url,
-        channel="stable",
-        protection="windows-dpapi-current-user",
-        license_key_sha256=fingerprint,
-    )
+    return service_url, license_id
 
 
 def read_license_authorization(
     path: str | Path,
     *,
     allow_insecure_localhost: bool = False,
-    license_file_passphrase: str | None = None,
     license_file_trusted_keys: Mapping[str, bytes] | None = None,
     trusted_service_urls: tuple[str, ...] = ("https://api.slybrowser.com",),
 ) -> LicenseAuthorization:
@@ -823,26 +542,43 @@ def read_license_authorization(
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, Mapping) and parsed.get("schemaVersion") == 2:
-            return _parse_encrypted_license_file(
-                parsed,
-                LicenseFileReadOptions(
-                    allow_insecure_localhost=allow_insecure_localhost,
-                    license_file_passphrase=license_file_passphrase,
-                    license_file_trusted_keys=license_file_trusted_keys,
-                    trusted_service_urls=trusted_service_urls,
-                ),
+            options = LicenseFileReadOptions(
+                allow_insecure_localhost=allow_insecure_localhost,
+                license_file_trusted_keys=license_file_trusted_keys,
+                trusted_service_urls=trusted_service_urls,
             )
-        if isinstance(parsed, Mapping) and parsed.get("schemaVersion") == 3:
-            return _parse_sealed_license_file(
-                parsed,
-                LicenseFileReadOptions(
-                    allow_insecure_localhost=allow_insecure_localhost,
-                    trusted_service_urls=trusted_service_urls,
-                ),
-            )
+            return _resolve_encrypted_license_file(parsed, options)
         return _parse_authorization(parsed, allow_insecure_localhost=allow_insecure_localhost)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise _fail("authorization_invalid", "Authorization file is not valid JSON") from error
+
+
+def _resolve_encrypted_license_file(document: Mapping[str, Any], options: LicenseFileReadOptions) -> LicenseAuthorization:
+    service_url, license_id = _validate_encrypted_license_file(document, options)
+    body = json.dumps({"schemaVersion": 1, "licenseFile": document}, separators=(",", ":")).encode("utf-8")
+    try:
+        status, raw = _default_transport(
+            "POST", f"{service_url}/v1/license-files/authorization",
+            {"content-type": "application/json", "user-agent": "SlyBrowserPythonSDK/license-file"}, body,
+        )
+    except (OSError, TimeoutError) as error:
+        raise _fail("license_service_unreachable", "License-file authorization service is unreachable") from error
+    if len(raw) > 64 * 1024:
+        raise _fail("license_service_invalid_response", "License-file authorization response is too large", status)
+    try:
+        response = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise _fail("license_service_invalid_response", "License-file authorization service returned invalid JSON", status) from error
+    if status != 200:
+        details = response.get("error") if isinstance(response, Mapping) else None
+        code = details.get("code") if isinstance(details, Mapping) else None
+        if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9_]{2,96}", code):
+            code = "license_file_authorization_failed"
+        raise _fail(code, f"License-file authorization service rejected the file (HTTP {status})", status)
+    authorization = _parse_authorization(response, allow_insecure_localhost=options.allow_insecure_localhost)
+    if authorization.service_url != service_url or not authorization.license_key.startswith(f"sly_live_{license_id}."):
+        raise _fail("license_service_invalid_response", "License-file authorization does not match the signed file", status)
+    return authorization
 
 
 def _default_transport(method: str, url: str, headers: Mapping[str, str], body: bytes | None) -> tuple[int, bytes]:
@@ -856,21 +592,75 @@ def _default_transport(method: str, url: str, headers: Mapping[str, str], body: 
 
 def _default_artifact_downloader(url: str, headers: Mapping[str, str], destination: Path) -> None:
     request = urllib.request.Request(url, headers=dict(headers), method="GET")
-    try:
-        with _NO_REDIRECT_OPENER.open(request, timeout=120) as response, destination.open("xb") as output:
-            if response.status != 200:
-                raise _fail("artifact_download_failed", f"Artifact download failed with HTTP {response.status}", response.status)
-            shutil.copyfileobj(response, output, length=1024 * 1024)
-    except urllib.error.HTTPError as error:
+    if destination.exists():
+        raise FileExistsError(destination)
+    deadline = time.monotonic() + _ARTIFACT_DEADLINE_SECONDS
+    for attempt in range(3):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
+        completed = False
+        created = False
         try:
-            payload = json.loads(error.read())
-            remote = payload.get("error", {})
-            details = dict(remote)
-            details.pop("code", None)
-            details.pop("message", None)
-            raise _fail(str(remote.get("code") or "artifact_download_failed"), str(remote.get("message") or error), error.code, details)
-        except (ValueError, AttributeError) as parse_error:
-            raise _fail("artifact_download_failed", f"Artifact download failed with HTTP {error.code}", error.code) from parse_error
+            with _NO_REDIRECT_OPENER.open(request, timeout=remaining) as response:
+                try:
+                    output = destination.open("xb")
+                except OSError as error:
+                    raise _fail("artifact_download_failed", "Artifact destination open failed", 0) from error
+                created = True
+                try:
+                    if response.status != 200:
+                        raise _fail("artifact_download_failed", f"Artifact download failed with HTTP {response.status}", response.status)
+                    while True:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError("Artifact download exceeded 90 minutes")
+                        # urllib has no total streaming deadline; tighten the socket before every read.
+                        stream_socket = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+                        if stream_socket is not None:
+                            stream_socket.settimeout(remaining)
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        try:
+                            output.write(chunk)
+                        except OSError as error:
+                            raise _fail("artifact_download_failed", "Artifact destination write failed", 0) from error
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Artifact download exceeded 90 minutes")
+                finally:
+                    try:
+                        output.close()
+                    except OSError as error:
+                        raise _fail("artifact_download_failed", "Artifact destination close failed", 0) from error
+            completed = True
+            return
+        except urllib.error.HTTPError as error:
+            status = error.code
+            try:
+                payload = json.loads(error.read())
+                remote = payload.get("error", {})
+                details = dict(remote)
+                details.pop("code", None)
+                details.pop("message", None)
+                failure = _fail(str(remote.get("code") or "artifact_download_failed"), str(remote.get("message") or error), status, details)
+            except (ValueError, AttributeError, TypeError):
+                failure = _fail("artifact_download_failed", f"Artifact download failed with HTTP {status}", status)
+            if status not in _ARTIFACT_RETRY_STATUSES or attempt == 2:
+                raise failure from error
+        except LicenseServiceError as error:
+            if error.status not in _ARTIFACT_RETRY_STATUSES or attempt == 2:
+                raise
+        except (urllib.error.URLError, OSError) as error:
+            if attempt == 2:
+                raise _fail("artifact_download_failed", "Artifact download transport failed", 0) from error
+        finally:
+            if created and not completed:
+                destination.unlink(missing_ok=True)
+        backoff = _ARTIFACT_BACKOFF_SECONDS[attempt]
+        if deadline - time.monotonic() <= backoff:
+            raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
+        time.sleep(backoff)
 
 
 class LicenseServiceClient:
@@ -903,7 +693,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.2.0",
+        sdk_version: str = "0.3.0",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -1028,7 +818,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.2.0",
+        sdk_version: str = "0.3.0",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -1165,7 +955,7 @@ class LicenseServiceClient:
         arch: str,
         startup_id: str | None = None,
         automation_backend: str | None = None,
-        sdk_version: str = "0.2.0",
+        sdk_version: str = "0.3.0",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,

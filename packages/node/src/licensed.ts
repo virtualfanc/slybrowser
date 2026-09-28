@@ -395,9 +395,6 @@ export async function installLatestAuthorizedBrowser(
     ...(options.trust.allowInsecureLocalhost === undefined
       ? {}
       : { allowInsecureLocalhost: options.trust.allowInsecureLocalhost }),
-    ...(options.trust.licenseFilePassphrase === undefined
-      ? {}
-      : { licenseFilePassphrase: options.trust.licenseFilePassphrase }),
     ...(options.trust.licenseFileTrustedKeys === undefined
       ? {}
       : { licenseFileTrustedKeys: options.trust.licenseFileTrustedKeys }),

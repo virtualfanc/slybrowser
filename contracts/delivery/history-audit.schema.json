@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slybrowser.com/contracts/delivery/history-audit.schema.json",
+  "title": "Public Git history audit receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "gateId", "status", "observedAt", "refCount", "commitCount", "treeCount", "blobCount", "findings", "evidenceDigest"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "gateId": { "const": "public-git-history-audit" },
+    "status": { "enum": ["pass", "fail"] },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "refCount": { "type": "integer", "minimum": 0 },
+    "commitCount": { "type": "integer", "minimum": 0 },
+    "treeCount": { "type": "integer", "minimum": 0 },
+    "blobCount": { "type": "integer", "minimum": 0 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ruleId"],
+        "properties": {
+          "ruleId": { "type": "string", "minLength": 1 },
+          "ref": { "type": "string" },
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+          "objectId": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+          "path": { "type": "string" },
+          "paths": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidenceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

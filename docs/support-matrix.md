@@ -31,7 +31,7 @@ service still enforces the plan-scoped release window for that account.
 | --- | --- | --- |
 | Node.js | 20, 22 and 24 on Windows, Ubuntu and macOS | CI contract support |
 | Python | 3.10, 3.12 and 3.14 on Windows, Ubuntu and macOS | CI contract support |
-| Java | 11, 17 and 21 on Windows, Ubuntu and macOS | Local Java 11 tests pass; signed browser score matrix is parameterized and skipped without a lease |
+| Java | 21 on Windows, Ubuntu and macOS | JDK 21 is required for the SDK and Maven build; signed browser score matrix is parameterized and gated by a lease |
 | .NET | 8, 9 and 10 SDKs on Windows, Ubuntu and macOS | Local .NET 8 tests pass; signed browser score matrix is parameterized and gated by lease |
 
 Playwright is declared for all four SDKs. Puppeteer is declared only for
