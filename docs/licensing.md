@@ -2,6 +2,8 @@
 
 Last updated: 2026-09-28
 
+Free certificates are long-term, with no trial expiry and one concurrent browser process. The signed v2 file retains its required ISO timestamp, using `9999-12-31T23:59:59.000Z` as the compatibility horizon; the Free service entitlement has no time limit. Signature, online entitlement, revocation and concurrency checks remain required. Users with older time-limited Free certificates can request a replacement using their original email at the official Free claim page. A valid old key is retained; an expired old key is replaced. Revoked licenses cannot be restored through this flow.
+
 This document freezes the license-file contract that payment, authorization
 delivery, SDK launch, signed downloads and native runtime enforcement must share.
 The encrypted v2 test-file issuer/readers and v2 runtime-session protocol are

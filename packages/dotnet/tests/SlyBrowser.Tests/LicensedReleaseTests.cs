@@ -35,7 +35,7 @@ public sealed class LicensedReleaseTests
         try
         {
             string licenseFile = Path.Combine(root, "account.slybrowser-license.json");
-            Dictionary<string, object?> document = LicenseDocument(signingKey);
+            Dictionary<string, object?> document = LicenseDocument(signingKey, expiresAt: "9999-12-31T23:59:59.000Z");
             await File.WriteAllTextAsync(licenseFile, JsonSerializer.Serialize(document), TestContext.Current.CancellationToken);
             LicenseFileReadOptions options = new()
             {

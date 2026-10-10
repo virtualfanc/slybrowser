@@ -53,7 +53,7 @@ final class LicensedReleaseTest {
   void readsV2LicenseFileAndFailsClosedOnTampering() throws Exception {
     Ed25519PrivateKeyParameters signingKey = newPrivateKey();
     Path licenseFile = temp.resolve("account.slybrowser-license.json");
-    Map<String, Object> document = licenseDocument(signingKey);
+    Map<String, Object> document = licenseDocument(signingKey, "slybrowser-license-file", "2033-05-18T03:33:20.000Z", "9999-12-31T23:59:59.000Z", "lf_test_java_reader", Map.of());
     Files.writeString(licenseFile, CanonicalJson.MAPPER.writeValueAsString(document));
     LicenseFileReadOptions options = new LicenseFileReadOptions();
     options.licenseFileTrustedKeys = Map.of("license-file-test-v1", signingKey.generatePublicKey().getEncoded());

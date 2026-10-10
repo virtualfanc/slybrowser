@@ -620,6 +620,7 @@ describe("authorized release client", () => {
       serviceUrl: "https://api.slybrowser.test",
       issuedAt: "2033-05-18T03:33:20.000Z",
       fileId: "lf_test_node_reader",
+      expiresAt: "9999-12-31T23:59:59.000Z",
       passphrase: "test-passphrase-only",
       signingKeyId: "license-file-test-v1",
       signingPrivateKey: privateKey,

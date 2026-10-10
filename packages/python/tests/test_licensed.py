@@ -808,7 +808,7 @@ class LicensedReleaseTests(unittest.TestCase):
         signing_key = Ed25519PrivateKey.generate()
         with tempfile.TemporaryDirectory() as root:
             license_file = Path(root) / "account.slybrowser-license.json"
-            document = _v2_license_document(signing_key)
+            document = _v2_license_document(signing_key, expires_at="9999-12-31T23:59:59.000Z")
             license_file.write_text(json.dumps(document), encoding="utf-8")
             def authorize(_method: str, _url: str, _headers: Mapping[str, str], body: bytes | None) -> tuple[int, bytes]:
                 requested = json.loads(body or b"{}") ["licenseFile"]

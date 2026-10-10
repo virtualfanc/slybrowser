@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://slybrowser.com/free-license"><strong>Claim a Free license</strong></a><br>
-  Receive a 90-day Free license certificate by email for one concurrent browser process.<br>
+  Receive a long-term Free license certificate by email for one concurrent browser process, with no trial expiry.<br>
   It does not renew automatically and can be claimed once per email.
 </p>
 
