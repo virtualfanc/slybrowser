@@ -24,8 +24,6 @@ Last updated: 2026-08-24
 
 SlyBrowser should collect only the data needed for checkout, license delivery, entitlement checks, release download authorization, rate limiting, security logging, support and product feedback.
 
-Allowed data includes checkout email, PayNow correlation IDs, plan/SKU, license ID, order ID, platform, architecture, release artifact hashes, optional privacy-preserving device hash, runtime session state, support messages and delivery status. Payment details are handled by the payment provider and must not be stored directly by SlyBrowser.
-
 The license and billing services must not collect page content, visited URLs, cookies, credentials, local profile data or customer automation payloads.
 
 ## Acceptable use
@@ -53,3 +51,4 @@ Every published browser package must include `BINARY-LICENSE.txt`, `LICENSE-SCOP
 ## Reference style
 
 The structure follows the same practical categories used by CloakBrowser's public legal materials: refund/cancellation rules, acceptable-use limits, privacy boundaries, support limits and a separate binary-distribution boundary. SlyBrowser text must remain project-specific and must not copy CloakBrowser wording.
+

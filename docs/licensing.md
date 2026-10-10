@@ -33,29 +33,6 @@ browser binary may run granted features.
 SlyBrowser uses an encrypted and authenticated license file plus online
 entitlement checks:
 
-1. Paid users receive one `slybrowser-license.json` file only after a verified
-   payment creates an active entitlement.
-2. The file is an encrypted container. The public header is non-secret; the
-   license key is inside an AEAD-encrypted payload and is never stored as
-   plaintext in the file.
-3. The complete container is signed by SlyBrowser with Ed25519. The encrypted
-   payload is authenticated with AES-256-GCM and binds to the public header as
-   additional authenticated data.
-4. The file contains no price, PayNow ID, checkout URL, raw email, plan authority,
-   paid-through authority, browser version authority or feature authority.
-5. The SDK validates the public fields, expiry, trusted origin and Ed25519
-   signature, then submits the intact file to the trusted authorization service
-   over TLS. The service alone decrypts the payload and returns a scoped
-   authorization for the current request.
-6. The service checks the entitlement, reserves concurrency and returns a
-   signed runtime lease plus a signed release manifest.
-7. The SDK downloads only the selected artifact, verifies hashes and launches the
-   exact browser/driver pair.
-8. The native browser/WebDriver validates the runtime lease and keeps the session
-   alive through heartbeat. Paid features fail closed when the lease expires,
-   is revoked, does not match the binary, or was not activated by the native
-   process.
-
 This keeps payment, renewal, refund, chargeback and plan changes server-side.
 Checkout creation, checkout return URLs and pending payment state never create or
 expose a paid license file. Renewal extends the entitlement; it does not require
@@ -171,12 +148,6 @@ Node.js and Python CLIs wrap it as:
 slybrowser license info --authorization account.slybrowser-license.json
 ```
 
-The response contains plan, effective plan, paid-through time, feature set,
-active/available browser-process concurrency, selected release state, update
-availability and `stableErrorCode`. It must not contain license keys, runtime tokens,
-bootstrap tokens, activation tickets, download tickets, emails, PayNow identifiers,
-profile paths or service access URLs.
-
 ### Required validation
 
 - `schemaVersion` must be `2`.
@@ -203,15 +174,6 @@ profile paths or service access URLs.
 ### Fields intentionally excluded
 
 The file must not contain:
-
-- plan price, currency, billing period or PayNow product ID;
-- PayNow checkout, customer, subscription or payment IDs;
-- raw customer email or delivery address;
-- plaintext license key;
-- authoritative plan, paid-through, feature list or concurrency limit;
-- browser version, download URL, artifact hash or rollback permission;
-- session token, runtime token, runtime lease or download ticket;
-- private signing keys, peppers, telemetry IDs or support-only notes.
 
 Plan, paid-through, concurrency, features, release selection and download rights
 come from server state and signed runtime responses.
@@ -273,9 +235,6 @@ Content-Type: application/json
   "deviceHash": "<optional-privacy-preserving-hash>"
 }
 ```
-
-The client cannot submit price, plan, feature, concurrency, checkout URL,
-artifact URL, hash, PayNow ID or paid-through time.
 
 The service:
 
@@ -375,23 +334,6 @@ be marketed as impossible to crack.
 
 ## 8. File storage and logging rules
 
-- The license file must be written with owner-only permissions where the
-  platform supports them.
-- The paid production license file must be encrypted and authenticated; plaintext
-  license files are private-preview compatibility only.
-- CLIs accept a file path such as `--authorization` or `--license-file`; they
-  must not accept `--license-key=...`.
-- SDKs must not put the license key in process arguments, environment variables,
-  analytics events, exceptions, crash dumps, browser profiles or test snapshots.
-- SDKs must not decrypt the file or persist returned authorization secrets.
-- Temporary runtime lease files are short-lived, owner-only and removed after
-  launch handoff.
-- Server logs store HMAC/fingerprint values, license ID, file ID, session ID and
-  public order IDs, not raw license keys, raw emails, tokens, lease bodies or
-  PayNow secrets.
-- If a license file is exposed, revoke the entitlement or rotate to a new
-  license key and invalidate all active sessions.
-
 ## 9. Payment binding
 
 Payment produces or updates entitlements; it does not directly grant runtime
@@ -399,25 +341,7 @@ access.
 
 First paid activation:
 
-1. checkout intent stores the website-entered delivery email and selected plan;
-2. PayNow checkout metadata contains only the internal checkout intent ID;
-3. PayNow webhook signature is verified and the PayNow Management API confirms
-   product, amount, currency, checkout, customer and subscription facts;
-4. verified payment creates order, payment, first period, subscription,
-   entitlement and email outbox in one transaction;
-5. only after that transaction commits, the service generates one v2 license
-   file and sends it only to the
-   website-entered email;
-6. PayNow `billing_email` never overrides delivery.
-
 The following states must not generate or disclose a license file:
-
-- pricing page form submitted but checkout intent not created;
-- checkout intent created but PayNow checkout not completed;
-- user returns from PayNow with success-looking redirect query parameters;
-- webhook signature valid but Management API confirmation missing or mismatched;
-- payment pending, disputed, refunded, chargeback, wrong product, wrong amount,
-  wrong currency, wrong store, or stale webhook.
 
 Renewal:
 
@@ -444,24 +368,6 @@ Refund/chargeback:
 
 P0 before public paid checkout:
 
-- define and test a v2 encrypted license-file JSON schema;
-- generate encrypted/authenticated v2 files with AES-256-GCM and Ed25519;
-- verify signed public fields and expiry in Node.js, Python, Java and .NET;
-- resolve the intact file at the trusted service, which validates payload
-  binding and current entitlement;
-- enforce trusted service origins before any network request containing
-  `licenseKey`;
-- generate v2 files from the service/admin issue path;
-- keep v1 read compatibility with warnings during private preview;
-- ensure file generation never writes email, PayNow IDs, price or plan authority;
-- ensure plaintext `licenseKey` exists only in bounded service/SDK memory,
-  never in generated files, logs or attachments;
-- add redaction tests for logs, errors and CLI output;
-- add N/N+1 concurrency tests per plan;
-- add revoke, hold, expiry, downgrade, replay and clock-skew tests;
-- add native activation and heartbeat tests before unlocking paid-only features;
-- update the payment checkout flow to create entitlements and email the v2 file.
-
 2026-09-28 implementation note: all four local SDK readers verify signed
 certificate metadata and request online authorization. Local passphrase
 decryption and Windows DPAPI sealed-authorization import have been removed from
@@ -480,19 +386,3 @@ P1 after controlled preview:
 
 The license-file scheme is ready for payment integration when:
 
-- a fixture encrypted v2 file verifies in every SDK language and resolves at
-  the trusted authorization service;
-- tampering with `serviceUrl`, `channel`, `licenseId`, `fileId`, `encryption`,
-  `ciphertext`, `tag` or `signature` fails before network access;
-- a missing, revoked or unresolvable server key returns a stable service error
-  and creates no session or download ticket;
-- a valid file creates exactly one reserved browser runtime session per
-  `startupId`; the project WebDriver child process uses a separate
-  `driverActivationTicket` under that same session;
-- N and N+1 concurrency tests pass for Free, Basic, Pro, Max and Ultra;
-- copied/replayed temporary leases fail after expiry or mismatch;
-- signed release download, hash verification and exact browser/driver pairing
-  are bound to the same session;
-- gated features require a signed runtime lease and native activation;
-- logs, metrics and errors contain no license key, raw email, session token,
-  runtime token or PayNow secret.

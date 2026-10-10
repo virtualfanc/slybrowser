@@ -216,7 +216,7 @@ slybrowser license info --authorization account.authorization.json
 
 It prints redacted plan, concurrency, paid-through, selected release, update status and
 `stableErrorCode` fields only. It does not print license keys, runtime tokens, download
-tickets, emails, PayNow IDs, profile paths or service access URLs.
+tickets, emails, payment identifiers, profile paths or service access URLs.
 
 ```ts
 import { launch } from "slybrowser";

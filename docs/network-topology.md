@@ -1,52 +1,24 @@
-# Production hostname and cache topology
+# Service routing and cache boundaries
 
-## Host routing
+SlyBrowser separates cacheable website assets from customer-specific API responses.
 
-| Hostname | Cloudflare mode | Purpose | Cache policy |
-| --- | --- | --- | --- |
-| `slybrowser.com` | Proxied | Public website | HTML is `no-store`; hashed `/assets/` are cache-eligible and immutable |
-| `www.slybrowser.com` | Proxied | Redirect to apex website | No application content |
-| `api.slybrowser.com` | DNS only | License, account, billing and webhook APIs | `no-store` for every response |
+| Host | Purpose | Client boundary |
+| --- | --- | --- |
+| `slybrowser.com` | Official website, Free entry and Pancake purchase entry | HTML and customer responses are not cached; content-hashed static assets may be cached |
+| `www.slybrowser.com` | Redirect to the official website | No independent application origin |
+| `api.slybrowser.com` | Plans, licensing, runtime leases and authorized release delivery | Customer-specific responses and authorization failures are not cached |
 
-Cloudflare is authoritative through `ram.ns.cloudflare.com` and
-`simone.ns.cloudflare.com`. The zone uses **Full (strict)** encryption and **Always Use
-HTTPS**.
+The SDK obtains API and release destinations through the authorized delivery flow.
+Applications supply the authorization file, profile and supported launch/Humanize
+options. Deployment topology does not add executable-path or verification-key inputs
+to the public SDK interface.
 
-Active Cache Rules, in order:
+Paid purchases use Pancake’s hosted checkout. The SlyBrowser server determines the
+canonical plan and confirms provider settlement before issuing a license. Browser
+redirects and cached pages cannot authorize payment or grant an entitlement.
+Historical billing compatibility remains a private service responsibility.
 
-1. `Bypass legacy /api routes` bypasses cache for `/api/*` on the apex and `www`
-   hostnames as a defensive fallback.
-2. `Cache hashed static assets` makes `/assets/*` eligible for cache on the apex and
-   `www` hostnames. Vite content hashes and the origin's one-year `immutable` header
-   make these files safe to cache long-term.
+Cloudflare rules, nameservers, origin addresses, Nginx upstream ports and operational
+deployment state belong to the private website repository and production Evidence.
+They are not client configuration requirements.
 
-The API hostname intentionally bypasses Cloudflare's HTTP proxy. This avoids accidental
-edge caching of customer-specific responses, webhook requests, license leases and
-authorization failures. DNS-only records expose the origin IP, so API authentication,
-rate limiting, request-size limits, monitoring and host firewall controls remain origin
-responsibilities.
-
-The website and DNS-only API currently share one public IP. That means the origin cannot
-be firewalled to Cloudflare IP ranges only without also blocking the API. A separate API
-origin IP or Cloudflare Tunnel is required if origin concealment becomes a requirement.
-
-## API reverse-proxy routes
-
-The checked-in nginx production draft keeps `/healthz` as a reserved gateway health
-response and proxies reviewed route families to local services. Production is not
-considered deployed until the server config has been applied, syntax-tested on the
-target host, and exercised with real secrets.
-
-Route families:
-
-- `127.0.0.1:8787` — `/v1/billing/*` and `/v1/feedback` for PayNow checkout,
-  customer order status, email delivery callbacks, webhook receiving and feedback.
-- `127.0.0.1:8788` — `/v1/plans`, `/v1/licenses/*`, `/v1/releases/artifacts/*`,
-  `/v2/runtime/*` and `/v1/admin/licenses*` for license issuance, runtime leases and
-  protected browser artifacts.
-
-The public website host also proxies only the narrow browser-needed surface
-(`/v1/billing/checkout-intents`, checkout status, customer order status/resend and
-`/v1/feedback`) so same-origin static pages work without CORS. Do not place these
-routes under `https://slybrowser.com/api`. The public website host is CDN-proxied and
-optimized for immutable static assets.
