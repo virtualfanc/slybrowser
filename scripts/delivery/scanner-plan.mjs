@@ -42,6 +42,21 @@ function normalizeScanner(scanner) {
     throw new Error(`${scanner.id ?? "scanner"}: supporting tools are invalid`);
   }
   const requiredEcosystems = scanner.requiredEcosystems ?? [];
+  if (scanner.jobs !== undefined && (scanner.id !== "sast" || !Number.isInteger(scanner.jobs) || scanner.jobs < 1 || scanner.jobs > 32)) {
+    throw new Error(`${scanner.id}: scanner jobs must be between 1 and 32`);
+  }
+  if (scanner.projectMode !== undefined && (scanner.id !== "sast" || scanner.projectMode !== "novcs")) {
+    throw new Error(`${scanner.id}: scanner project mode must be novcs`);
+  }
+  if (scanner.mavenDataSource !== undefined && (scanner.id !== "dependency-vulnerability" || !["native", "deps.dev"].includes(scanner.mavenDataSource))) {
+    throw new Error(`${scanner.id}: Maven data source is invalid`);
+  }
+  if (scanner.mavenRegistry !== undefined && (scanner.id !== "dependency-vulnerability" || ![
+    "https://repo.maven.apache.org/maven2",
+    "https://maven-central.storage-download.googleapis.com/maven2",
+  ].includes(scanner.mavenRegistry))) {
+    throw new Error(`${scanner.id}: Maven registry is not allowlisted`);
+  }
   if (!Array.isArray(requiredEcosystems) || requiredEcosystems.some((item) => !["npm", "pypi", "maven", "nuget"].includes(item))
       || new Set(requiredEcosystems).size !== requiredEcosystems.length) {
     throw new Error(`${scanner.id ?? "scanner"}: required ecosystems are invalid`);
@@ -57,6 +72,10 @@ function normalizeScanner(scanner) {
     toolPathEnvironment: scanner.toolPathEnvironment ?? null,
     supportingTools: supportingTools.map((item) => ({ ...item })),
     requiredEcosystems: [...requiredEcosystems],
+    ...(scanner.jobs === undefined ? {} : { jobs: scanner.jobs }),
+    ...(scanner.projectMode === undefined ? {} : { projectMode: scanner.projectMode }),
+    ...(scanner.mavenDataSource === undefined ? {} : { mavenDataSource: scanner.mavenDataSource }),
+    ...(scanner.mavenRegistry === undefined ? {} : { mavenRegistry: scanner.mavenRegistry }),
     limitations: [...limitations],
   };
 }
@@ -217,9 +236,16 @@ export function buildScannerInvocation(plan, scannerId, context) {
   switch (scanner.id) {
     case "git-diff-check": {
       const executable = controlledToolPath(scanner, context, "git");
-      invocation = directInvocation(scanner, executable, ["diff", "--cached", "--check"], repositoryRoot);
+      const comparison = context.comparisonBaseCommit;
+      if (comparison !== undefined && comparison !== null
+          && (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(comparison)
+            || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(context.candidateTree ?? ""))) {
+        throw new Error("git-diff-check: comparison requires immutable commit and candidate tree identities");
+      }
+      invocation = directInvocation(scanner, executable,
+        comparison ? ["diff", "--check", comparison, context.candidateTree] : ["diff", "--cached", "--check"], repositoryRoot);
       invocation.versionInvocation.args = ["--version"];
-      invocation.useGitIndex = true;
+      invocation.useGitIndex = !comparison;
       break;
     }
     case "repository-guard":
@@ -264,7 +290,10 @@ export function buildScannerInvocation(plan, scannerId, context) {
       const prefix = wslAdapter ? ["--exec", "semgrep"] : [];
       invocation = directInvocation(scanner, executable, [
         ...prefix, "scan", "--config", rules,
-        "--json", "--error", "--strict", "--metrics=off", scanRoot,
+        "--json", "--error", "--strict", "--metrics=off",
+        ...(scanner.jobs === undefined ? [] : ["--jobs", String(scanner.jobs)]),
+        ...(scanner.projectMode === "novcs" ? ["--novcs", "--project-root", scanRoot, "--no-git-ignore"] : []),
+        scanRoot,
       ], candidateRoot);
       if (wslAdapter) {
         invocation.versionInvocation.args = ["--exec", "semgrep", "--version"];
@@ -274,7 +303,10 @@ export function buildScannerInvocation(plan, scannerId, context) {
     }
     case "dependency-vulnerability": {
       const executable = controlledToolPath(scanner, context, "osv-scanner");
-      invocation = directInvocation(scanner, executable, ["scan", "source", "-r", candidateRoot, "--format", "json"], candidateRoot);
+      invocation = directInvocation(scanner, executable, ["scan", "source", "-r", candidateRoot, "--format", "json",
+        ...(scanner.mavenDataSource === undefined ? [] : ["--data-source", scanner.mavenDataSource]),
+        ...(scanner.mavenRegistry === undefined ? [] : ["--maven-registry", scanner.mavenRegistry]),
+      ], candidateRoot);
       invocation.requiredEcosystems = scanner.requiredEcosystems;
       invocation.requiredInputs = dependencyInputs(candidateRoot);
       break;

@@ -45,7 +45,7 @@ function sameCandidate(left, right) {
 }
 
 function currentCandidate(root, candidate, phase) {
-  const current = captureStagedCandidate(root);
+  const current = captureStagedCandidate(root, { comparisonBaseCommit: candidate.comparisonBaseCommit ?? null });
   if (!sameCandidate(current, candidate)) throw new Error(`candidate changed before or during scanner ${phase}`);
   return current;
 }
@@ -1059,6 +1059,8 @@ export function runScanner({
     const invocation = buildScannerInvocation(parsedPlan, scannerId, {
       repositoryRoot,
       candidateRoot,
+      comparisonBaseCommit: candidate.comparisonBaseCommit,
+      candidateTree: candidate.tree,
       rawEvidencePath,
       toolPaths,
       environment,

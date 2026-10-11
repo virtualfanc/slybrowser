@@ -429,6 +429,43 @@ public sealed class LicensedReleaseTests
     }
 
     [Fact]
+    public async Task SignedCdnDownloadsSendNoCredentials()
+    {
+        string url = "https://downloads.slybrowser.com/github.com/virtualfanc/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.7z";
+        Fixture fixture = new(artifactUrl: url, runtimeTicketUrl: url);
+        string root = Path.Combine(Path.GetTempPath(), $"sly-dotnet-cdn-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            using LicenseServiceClient client = new(
+                new LicenseAuthorization("https://api.slybrowser.test", $"sly_live_00000000-0000-4000-8000-000000000002.{new string('x', 43)}"),
+                fixture.Settings(root).Trust);
+            LicensedSessionGrant session = await client.CreateSessionAsync(new CreateSessionOptions { Platform = "windows", Arch = "x64" }, TestContext.Current.CancellationToken);
+            await client.DownloadArtifactAsync(session, Path.Combine(root, "session.7z"), TestContext.Current.CancellationToken);
+            RuntimeSessionGrant runtime = await client.CreateRuntimeSessionAsync(new CreateRuntimeSessionOptions
+            {
+                Platform = "windows", Arch = "x64", StartupId = "st_dotnetv2runtime001",
+            }, TestContext.Current.CancellationToken);
+            await client.DownloadRuntimeArtifactAsync(runtime, Path.Combine(root, "runtime.7z"), TestContext.Current.CancellationToken);
+            Assert.Equal(2, fixture.Downloads);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SignedCdnUrlRejectsWrongRepository()
+    {
+        string url = "https://downloads.slybrowser.com/github.com/attacker/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.7z";
+        Fixture fixture = new(artifactUrl: url);
+        using LicenseServiceClient client = new(
+            new LicenseAuthorization("https://api.slybrowser.test", $"sly_live_00000000-0000-4000-8000-000000000002.{new string('x', 43)}"),
+            fixture.Settings(Path.GetTempPath()).Trust);
+        LicenseServiceException error = await Assert.ThrowsAsync<LicenseServiceException>(() =>
+            client.CreateSessionAsync(new CreateSessionOptions { Platform = "windows", Arch = "x64" }, TestContext.Current.CancellationToken));
+        Assert.Equal("artifact_origin_invalid", error.Code);
+    }
+
+    [Fact]
     public async Task ReadsRedactedOnlineLicenseInfoWithoutCreatingSession()
     {
         Fixture fixture = new();
@@ -756,6 +793,8 @@ public sealed class LicensedReleaseTests
         private readonly string _driverActivationTicket = "driver-activation-ticket";
         private readonly string _runtimeToken = "runtime-token";
         private readonly string _downloadTicketToken = "download-token";
+        private readonly string? _artifactUrl;
+        private readonly string? _runtimeTicketUrl;
         public int Downloads { get; private set; }
         public int Releases { get; private set; }
         public string ArtifactSha256 => _artifactSha256;
@@ -766,7 +805,9 @@ public sealed class LicensedReleaseTests
             bool tamperManifest = false,
             bool sessionError = false,
             string sessionErrorCode = "session_limit",
-            HttpStatusCode sessionErrorStatus = HttpStatusCode.Conflict)
+            HttpStatusCode sessionErrorStatus = HttpStatusCode.Conflict,
+            string? artifactUrl = null,
+            string? runtimeTicketUrl = null)
         {
             _leasePrivate = NewPrivateKey();
             _releasePrivate = NewPrivateKey();
@@ -776,6 +817,8 @@ public sealed class LicensedReleaseTests
             _sessionError = sessionError;
             _sessionErrorCode = sessionErrorCode;
             _sessionErrorStatus = sessionErrorStatus;
+            _artifactUrl = artifactUrl;
+            _runtimeTicketUrl = runtimeTicketUrl;
         }
 
         public async Task<string> WriteAuthorizationAsync(string directory)
@@ -921,7 +964,7 @@ public sealed class LicensedReleaseTests
                     ["token"] = _downloadTicketToken,
                     ["expiresAt"] = _now + 600,
                     ["artifactSha256"] = _artifactSha256,
-                    ["artifactUrl"] = $"https://api.slybrowser.test/v1/releases/artifacts/{_artifactSha256}.7z",
+                    ["artifactUrl"] = _runtimeTicketUrl ?? $"https://api.slybrowser.test/v1/releases/artifacts/{_artifactSha256}.7z",
                 };
                 return Json(new Dictionary<string, object?>
                 {
@@ -976,6 +1019,12 @@ public sealed class LicensedReleaseTests
             {
                 Assert.Equal($"Runtime {_runtimeToken}", request.Headers.Authorization?.ToString());
                 return RuntimeJson("closing", includeRuntimeToken: false);
+            }
+            if (url.StartsWith("https://downloads.slybrowser.com/", StringComparison.Ordinal))
+            {
+                Assert.Null(request.Headers.Authorization);
+                Downloads++;
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(_archive) };
             }
             if (url.Contains("/v1/releases/artifacts/", StringComparison.Ordinal))
             {
@@ -1143,7 +1192,7 @@ public sealed class LicensedReleaseTests
                     {
                         ["platform"] = "windows",
                         ["arch"] = "x64",
-                        ["url"] = $"https://api.slybrowser.test/v1/releases/artifacts/{_artifactSha256}.7z",
+                        ["url"] = _artifactUrl ?? $"https://api.slybrowser.test/v1/releases/artifacts/{_artifactSha256}.7z",
                         ["sha256"] = _artifactSha256,
                         ["size"] = _archive.Length,
                         ["archiveFormat"] = "7z",

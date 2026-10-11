@@ -20,7 +20,7 @@
       "id": "basic",
       "sku": "basic",
       "name": "Basic",
-      "monthlyPriceCents": 1900,
+      "monthlyPriceCents": 1800,
       "autoRenew": true,
       "concurrency": 5,
       "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
@@ -29,7 +29,7 @@
       "id": "pro",
       "sku": "pro",
       "name": "Pro",
-      "monthlyPriceCents": 4900,
+      "monthlyPriceCents": 4800,
       "autoRenew": true,
       "concurrency": 20,
       "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
@@ -38,7 +38,7 @@
       "id": "max",
       "sku": "max",
       "name": "Max",
-      "monthlyPriceCents": 19900,
+      "monthlyPriceCents": 18800,
       "autoRenew": true,
       "concurrency": 200,
       "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]
@@ -47,7 +47,7 @@
       "id": "ultra",
       "sku": "ultra",
       "name": "Ultra",
-      "monthlyPriceCents": 49900,
+      "monthlyPriceCents": 46800,
       "autoRenew": true,
       "concurrency": 2000,
       "features": ["browser", "release-download", "webdriver", "fingerprint", "humanize", "playwright", "puppeteer"]

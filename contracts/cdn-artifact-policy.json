@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "origin": "https://downloads.slybrowser.com",
+  "pathTemplate": "/github.com/virtualfanc/slybrowser/releases/download/<tag>/slybrowser-<browserVersion>-<target>-<arch>.<archiveFormat>",
+  "targets": {
+    "windows": "win",
+    "linux": "linux",
+    "macos": "mac"
+  },
+  "rules": [
+    "Accept only the exact HTTPS origin and repository path in a verified signed release Manifest.",
+    "Require the filename to match the signed browser version, platform, architecture and archive format.",
+    "Reject credentials, custom ports, query strings, fragments, encoded path separators and redirects.",
+    "Never send session or download-ticket credentials to the public CDN origin.",
+    "Retain signed size, SHA-256 and Browser/Driver pairing checks before installation.",
+    "License authorization, concurrency and revocation remain server and kernel responsibilities."
+  ]
+}

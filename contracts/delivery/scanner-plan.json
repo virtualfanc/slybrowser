@@ -13,7 +13,7 @@
       "timeoutMs": 60000,
       "toolPathEnvironment": "SLY_SCANNER_GIT_PATH",
       "limitations": [
-        "Checks whitespace errors in the staged diff while candidate identity is verified before and after execution."
+        "Checks whitespace errors against HEAD by default or an explicitly frozen full commit identity; the comparison commit is bound to the candidate manifest and verified before and after execution."
       ]
     },
     {
@@ -64,6 +64,8 @@
       "network": "none",
       "timeoutMs": 900000,
       "toolPathEnvironment": "SLY_SCANNER_SEMGREP_PATH",
+      "jobs": 2,
+      "projectMode": "novcs",
       "limitations": [
         "Uses only the version-controlled contracts/delivery/semgrep-rules.yml rule set with metrics disabled."
       ]
@@ -77,6 +79,8 @@
       "network": "required",
       "timeoutMs": 900000,
       "toolPathEnvironment": "SLY_SCANNER_OSV_PATH",
+      "mavenDataSource": "native",
+      "mavenRegistry": "https://maven-central.storage-download.googleapis.com/maven2",
       "supportingTools": [],
       "requiredEcosystems": [
         "npm",

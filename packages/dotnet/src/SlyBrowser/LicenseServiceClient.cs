@@ -155,7 +155,7 @@ public sealed class LicenseServiceClientOptions
         new HashSet<string>(["https://api.slybrowser.com"], StringComparer.Ordinal);
     public HttpClient? HttpClient { get; init; }
     public bool AllowInsecureLocalhost { get; init; }
-    public string SdkVersion { get; init; } = "0.3.0";
+    public string SdkVersion { get; init; } = "0.3.1";
 }
 
 public sealed class CreateSessionOptions
@@ -514,8 +514,8 @@ public sealed class LicenseServiceClient : IDisposable
         if (!ReleaseManifestVerifier.IsSdkCompatible(manifest.SdkCompatibility, _sdkVersion))
             throw Fail("sdk_version_unsupported", $"Browser {browserVersion} does not support SDK {_sdkVersion}");
         ReleaseArtifact artifact = manifest.Select(platform, arch);
-        if (new Uri(artifact.Url).GetLeftPart(UriPartial.Authority) != new Uri(Authorization.ServiceUrl).GetLeftPart(UriPartial.Authority))
-            throw Fail("artifact_origin_invalid", "Authorized artifacts must be served by the license service origin");
+        if (Origin(artifact.Url) != Origin(Authorization.ServiceUrl) && !IsCdnArtifactUrl(artifact.Url, artifact, browserVersion))
+            throw Fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
         string plan = RequiredString(root, "plan", "license_service_invalid_response");
         int concurrency = checked((int)RequiredInteger(root, "concurrencyLimit", "license_service_invalid_response"));
         int active = checked((int)RequiredInteger(root, "activeSessions", "license_service_invalid_response"));
@@ -648,8 +648,8 @@ public sealed class LicenseServiceClient : IDisposable
         if (!ReleaseManifestVerifier.IsSdkCompatible(manifest.SdkCompatibility, _sdkVersion))
             throw Fail("sdk_version_unsupported", $"Browser {browserVersion} does not support SDK {_sdkVersion}");
         ReleaseArtifact artifact = manifest.Select(platform, arch);
-        if (Origin(artifact.Url) != Origin(Authorization.ServiceUrl))
-            throw Fail("artifact_origin_invalid", "Authorized artifacts must be served by the license service origin");
+        if (Origin(artifact.Url) != Origin(Authorization.ServiceUrl) && !IsCdnArtifactUrl(artifact.Url, artifact, browserVersion))
+            throw Fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
         if (!root.TryGetProperty("downloadTicket", out JsonElement ticket) || ticket.ValueKind != JsonValueKind.Object)
             throw Fail("license_service_invalid_response", "Runtime download ticket response is invalid");
         string ticketToken = RequiredString(ticket, "token", "license_service_invalid_response");
@@ -658,7 +658,8 @@ public sealed class LicenseServiceClient : IDisposable
         string artifactUrl = RequiredString(ticket, "artifactUrl", "license_service_invalid_response");
         if (ticketExpiresAt != expiresAt ||
             artifactSha256 != artifact.Sha256 ||
-            Origin(artifactUrl) != Origin(Authorization.ServiceUrl))
+            (Origin(artifactUrl) != Origin(Authorization.ServiceUrl) &&
+                !(artifactUrl == artifact.Url && IsCdnArtifactUrl(artifact.Url, artifact, browserVersion))))
             throw Fail("license_service_invalid_response", "Runtime download ticket response is invalid");
         string plan = RequiredString(root, "plan", "license_service_invalid_response");
         int concurrency = checked((int)RequiredInteger(root, "concurrencyLimit", "license_service_invalid_response"));
@@ -878,7 +879,10 @@ public sealed class LicenseServiceClient : IDisposable
         string destination,
         CancellationToken cancellationToken = default)
     {
-        await DownloadWithRetryAsync(new Uri(grant.Artifact.Url), $"Session {grant.SessionToken}", destination, cancellationToken);
+        bool cdn = IsCdnArtifactUrl(grant.Artifact.Url, grant.Artifact, grant.BrowserVersion);
+        if (!cdn && Origin(grant.Artifact.Url) != Origin(Authorization.ServiceUrl))
+            throw Fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
+        await DownloadWithRetryAsync(new Uri(grant.Artifact.Url), cdn ? null : $"Session {grant.SessionToken}", destination, cancellationToken);
     }
 
     public async Task DownloadRuntimeArtifactAsync(
@@ -886,10 +890,18 @@ public sealed class LicenseServiceClient : IDisposable
         string destination,
         CancellationToken cancellationToken = default)
     {
+        if (grant.DownloadTicket.ArtifactUrl == grant.Artifact.Url &&
+            IsCdnArtifactUrl(grant.Artifact.Url, grant.Artifact, grant.BrowserVersion))
+        {
+            await DownloadWithRetryAsync(new Uri(grant.Artifact.Url), null, destination, cancellationToken);
+            return;
+        }
+        if (Origin(grant.DownloadTicket.ArtifactUrl) != Origin(Authorization.ServiceUrl))
+            throw Fail("artifact_origin_invalid", "Runtime artifact origin is invalid");
         await DownloadWithRetryAsync(RuntimeArtifactUri(grant), $"Download {grant.DownloadTicket.Token}", destination, cancellationToken);
     }
 
-    private async Task DownloadWithRetryAsync(Uri uri, string authorization, string destination, CancellationToken callerToken)
+    private async Task DownloadWithRetryAsync(Uri uri, string? authorization, string destination, CancellationToken callerToken)
     {
         if (File.Exists(destination)) throw Fail("artifact_download_failed", "Artifact destination already exists");
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
@@ -902,7 +914,8 @@ public sealed class LicenseServiceClient : IDisposable
             {
                 deadline.Token.ThrowIfCancellationRequested();
                 using HttpRequestMessage request = new(HttpMethod.Get, uri);
-                request.Headers.Authorization = AuthenticationHeaderValue.Parse(authorization);
+                if (authorization is not null)
+                    request.Headers.Authorization = AuthenticationHeaderValue.Parse(authorization);
                 using HttpResponseMessage response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
                 if (!response.IsSuccessStatusCode) await ThrowResponseAsync(response, deadline.Token);
                 await using Stream input = await response.Content.ReadAsStreamAsync(deadline.Token);
@@ -1230,6 +1243,24 @@ public sealed class LicenseServiceClient : IDisposable
     }
 
     private static string Origin(string url) => new Uri(url).GetLeftPart(UriPartial.Authority);
+
+    private static bool IsCdnArtifactUrl(string url, ReleaseArtifact artifact, string browserVersion)
+    {
+        string? target = artifact.Platform switch { "windows" => "win", "linux" => "linux", "macos" => "mac", _ => null };
+        if (target is null || !Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)) return false;
+        const string origin = "https://downloads.slybrowser.com";
+        const string prefix = "/github.com/virtualfanc/slybrowser/releases/download/";
+        if (uri.GetLeftPart(UriPartial.Authority) != origin || uri.UserInfo.Length != 0 ||
+            uri.Query.Length != 0 || uri.Fragment.Length != 0 || !uri.AbsolutePath.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+        string remainder = uri.AbsolutePath[prefix.Length..];
+        int slash = remainder.IndexOf('/');
+        if (slash < 1) return false;
+        string tag = remainder[..slash];
+        string filename = $"slybrowser-{browserVersion}-{target}-{artifact.Arch}.{artifact.ArchiveFormat}";
+        return System.Text.RegularExpressions.Regex.IsMatch(tag, "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$") &&
+            remainder == $"{tag}/{filename}" && url == origin + uri.AbsolutePath;
+    }
 
     private static IReadOnlyList<string> RequiredLeaseFeatures(AutomationBackend? backend)
     {

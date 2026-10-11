@@ -2,13 +2,13 @@
 
 JDK 21 is required to build and run this SDK.
 
-Use Maven coordinate `com.slybrowser:slybrowser:0.3.0`:
+Use Maven coordinate `com.slybrowser:slybrowser:0.3.1`:
 
 ```xml
 <dependency>
   <groupId>com.slybrowser</groupId>
   <artifactId>slybrowser</artifactId>
-  <version>0.3.0</version>
+  <version>0.3.1</version>
 </dependency>
 ```
 

@@ -22,6 +22,8 @@ public final class LicenseServiceClient {
   private static final long ARTIFACT_DEADLINE_NANOS = 90L * 60 * 1_000_000_000;
   private static final int[] ARTIFACT_BACKOFF_MILLIS = {1_000, 2_000};
   private static final Set<Integer> ARTIFACT_RETRY_STATUSES = Set.of(429, 502, 503, 504);
+  private static final String CDN_ARTIFACT_ORIGIN = "https://downloads.slybrowser.com";
+  private static final String CDN_ARTIFACT_PREFIX = "/github.com/virtualfanc/slybrowser/releases/download/";
   private static final Set<String> PLANS = Set.of("free", "basic", "pro", "max", "ultra");
   private static final Set<String> SAFE_ERROR_DETAIL_FIELDS = Set.of(
       "state",
@@ -273,8 +275,9 @@ public final class LicenseServiceClient {
       throw fail("sdk_version_unsupported", "Browser " + browserVersion + " does not support SDK " + sdkVersion);
     }
     ReleaseArtifact artifact = manifest.select(platform, arch);
-    if (!origin(artifact.url).equals(origin(authorization.serviceUrl))) {
-      throw fail("artifact_origin_invalid", "Authorized artifacts must be served by the license service origin");
+    if (!origin(artifact.url).equals(origin(authorization.serviceUrl)) &&
+        !isCdnArtifactUrl(artifact.url, artifact, browserVersion)) {
+      throw fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
     }
     String plan = text(root, "plan");
     int concurrency = (int) integer(root, "concurrencyLimit");
@@ -387,8 +390,9 @@ public final class LicenseServiceClient {
       throw fail("sdk_version_unsupported", "Browser " + browserVersion + " does not support SDK " + sdkVersion);
     }
     ReleaseArtifact artifact = manifest.select(platform, arch);
-    if (!origin(artifact.url).equals(origin(authorization.serviceUrl))) {
-      throw fail("artifact_origin_invalid", "Authorized artifacts must be served by the license service origin");
+    if (!origin(artifact.url).equals(origin(authorization.serviceUrl)) &&
+        !isCdnArtifactUrl(artifact.url, artifact, browserVersion)) {
+      throw fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
     }
     JsonNode ticket = root.get("downloadTicket");
     if (ticket == null || !ticket.isObject()) {
@@ -400,7 +404,8 @@ public final class LicenseServiceClient {
     String artifactUrl = text(ticket, "artifactUrl");
     if (ticketExpiresAt != expiresAt ||
         !artifactSha256.equals(artifact.sha256) ||
-        !origin(artifactUrl).equals(origin(authorization.serviceUrl))) {
+        (!origin(artifactUrl).equals(origin(authorization.serviceUrl)) &&
+            !(artifactUrl.equals(artifact.url) && isCdnArtifactUrl(artifact.url, artifact, browserVersion)))) {
       throw fail("license_service_invalid_response", "Runtime download ticket response is invalid");
     }
     String plan = text(root, "plan");
@@ -514,14 +519,26 @@ public final class LicenseServiceClient {
   }
 
   public void downloadArtifact(LicensedSessionGrant grant, Path destination) {
+    boolean cdn = isCdnArtifactUrl(grant.artifact.url, grant.artifact, grant.browserVersion);
+    if (!cdn && !origin(grant.artifact.url).equals(origin(authorization.serviceUrl))) {
+      throw fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
+    }
     artifactDownloader.download(
         grant.artifact.url,
-        Map.of("Authorization", "Session " + grant.sessionToken),
+        cdn ? Map.of() : Map.of("Authorization", "Session " + grant.sessionToken),
         destination);
   }
 
   public void downloadRuntimeArtifact(RuntimeSessionGrant grant, Path destination) {
+    if (grant.downloadTicket.artifactUrl.equals(grant.artifact.url) &&
+        isCdnArtifactUrl(grant.artifact.url, grant.artifact, grant.browserVersion)) {
+      artifactDownloader.download(grant.artifact.url, Map.of(), destination);
+      return;
+    }
     URI uri = URI.create(grant.downloadTicket.artifactUrl);
+    if (!origin(grant.downloadTicket.artifactUrl).equals(origin(authorization.serviceUrl))) {
+      throw fail("artifact_origin_invalid", "Runtime artifact origin is invalid");
+    }
     String path = uri.getPath();
     if (path.startsWith("/v1/releases/artifacts/")) {
       path = path.replaceFirst("^/v1/releases/artifacts/", "/v2/runtime/artifacts/");
@@ -885,6 +902,30 @@ public final class LicenseServiceClient {
   private static String origin(String url) {
     URI uri = URI.create(url);
     return uri.getScheme() + "://" + uri.getAuthority();
+  }
+
+  private static boolean isCdnArtifactUrl(String url, ReleaseArtifact artifact, String browserVersion) {
+    String target = switch (artifact.platform) {
+      case "windows" -> "win";
+      case "linux" -> "linux";
+      case "macos" -> "mac";
+      default -> null;
+    };
+    if (target == null) return false;
+    URI uri;
+    try { uri = URI.create(url); }
+    catch (IllegalArgumentException error) { return false; }
+    if (!CDN_ARTIFACT_ORIGIN.equals(origin(url)) || uri.getRawUserInfo() != null ||
+        uri.getRawQuery() != null || uri.getRawFragment() != null ||
+        !uri.getRawPath().startsWith(CDN_ARTIFACT_PREFIX)) return false;
+    String remainder = uri.getRawPath().substring(CDN_ARTIFACT_PREFIX.length());
+    int slash = remainder.indexOf('/');
+    if (slash < 1) return false;
+    String tag = remainder.substring(0, slash);
+    String filename = "slybrowser-" + browserVersion + "-" + target + "-" + artifact.arch + "." + artifact.archiveFormat;
+    return tag.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}") &&
+        remainder.equals(tag + "/" + filename) &&
+        url.equals(CDN_ARTIFACT_ORIGIN + uri.getRawPath());
   }
 
   private static String newStartupId() {

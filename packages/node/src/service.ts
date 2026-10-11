@@ -15,6 +15,24 @@ import {
   verifyReleaseManifest,
 } from "./manifest.js";
 
+const CDN_ARTIFACT_ORIGIN = "https://downloads.slybrowser.com";
+const CDN_ARTIFACT_PREFIX = "/github.com/virtualfanc/slybrowser/releases/download/";
+
+function isCdnArtifactUrl(urlText: string, artifact: ReleaseArtifact, browserVersion: string): boolean {
+  const target = artifact.platform === "windows" ? "win" : artifact.platform === "macos" ? "mac" : "linux";
+  const filename = `slybrowser-${browserVersion}-${target}-${artifact.arch}.${artifact.archiveFormat}`;
+  let url: URL;
+  try { url = new URL(urlText); }
+  catch { return false; }
+  if (url.origin !== CDN_ARTIFACT_ORIGIN || url.username || url.password || url.search || url.hash ||
+      !url.pathname.startsWith(CDN_ARTIFACT_PREFIX)) return false;
+  const remainder = url.pathname.slice(CDN_ARTIFACT_PREFIX.length);
+  const tag = remainder.slice(0, remainder.indexOf("/"));
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(tag) &&
+    remainder === `${tag}/${filename}` &&
+    urlText === `${CDN_ARTIFACT_ORIGIN}${url.pathname}`;
+}
+
 export interface LicenseAuthorization {
   schemaVersion: 1;
   serviceUrl: string;
@@ -627,7 +645,7 @@ export class LicenseServiceClient {
   } = {}): Promise<LicenseInfo> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.3.0";
+    const sdkVersion = options.sdkVersion ?? "0.3.1";
     const versionPolicy = options.versionPolicy ?? (options.browserVersion === undefined ? "latest" : "exact");
     if (versionPolicy === "latest" && options.browserVersion !== undefined) {
       fail("version_policy_invalid", "Latest selection cannot include a requested browser version");
@@ -742,7 +760,7 @@ export class LicenseServiceClient {
   } = {}): Promise<LicensedSessionGrant> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.3.0";
+    const sdkVersion = options.sdkVersion ?? "0.3.1";
     const versionPolicy = options.versionPolicy ?? (options.browserVersion === undefined ? "latest" : "exact");
     if (versionPolicy === "latest" && options.browserVersion !== undefined) {
       fail("version_policy_invalid", "Latest selection cannot include a requested browser version");
@@ -826,8 +844,8 @@ export class LicenseServiceClient {
     }
     const artifact = selectArtifact(manifest, platform, arch);
     const serviceOrigin = new URL(this.authorization.serviceUrl).origin;
-    if (new URL(artifact.url).origin !== serviceOrigin) {
-      fail("artifact_origin_invalid", "Authorized artifacts must be served by the license service origin");
+    if (new URL(artifact.url).origin !== serviceOrigin && !isCdnArtifactUrl(artifact.url, artifact, browserVersion)) {
+      fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
     }
     const plan = value.plan;
     if (!new Set(["free", "basic", "pro", "max", "ultra"]).has(String(plan)) ||
@@ -879,7 +897,7 @@ export class LicenseServiceClient {
   } = {}): Promise<RuntimeSessionGrant> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.3.0";
+    const sdkVersion = options.sdkVersion ?? "0.3.1";
     const startupId = options.startupId ?? newStartupId();
     if (!/^st_[A-Za-z0-9_-]{16,120}$/.test(startupId)) {
       fail("startup_id_invalid", "Runtime startup ID is invalid");
@@ -981,8 +999,8 @@ export class LicenseServiceClient {
     }
     const artifact = selectArtifact(manifest, platform, arch);
     const serviceOrigin = new URL(this.authorization.serviceUrl).origin;
-    if (new URL(artifact.url).origin !== serviceOrigin) {
-      fail("artifact_origin_invalid", "Authorized artifacts must be served by the license service origin");
+    if (new URL(artifact.url).origin !== serviceOrigin && !isCdnArtifactUrl(artifact.url, artifact, browserVersion)) {
+      fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
     }
     const ticket = value.downloadTicket as Record<string, unknown> | undefined;
     const artifactUrl = String(ticket?.artifactUrl ?? "");
@@ -990,7 +1008,8 @@ export class LicenseServiceClient {
     if (!ticket || typeof ticket.token !== "string" || !ticket.token ||
         !Number.isSafeInteger(ticket.expiresAt) || ticket.expiresAt !== value.expiresAt ||
         artifactSha256 !== artifact.sha256 || !artifactUrl ||
-        new URL(artifactUrl).origin !== serviceOrigin) {
+        (new URL(artifactUrl).origin !== serviceOrigin &&
+          !(artifactUrl === artifact.url && isCdnArtifactUrl(artifact.url, artifact, browserVersion)))) {
       fail("license_service_invalid_response", "Runtime download ticket response is invalid");
     }
     const plan = value.plan;
@@ -1120,9 +1139,13 @@ export class LicenseServiceClient {
     let artifactUrl: URL;
     try { artifactUrl = new URL(grant.artifact.url); }
     catch { fail("license_service_invalid_response", "Artifact URL is invalid"); }
+    const cdn = isCdnArtifactUrl(grant.artifact.url, grant.artifact, grant.browserVersion);
+    if (!cdn && artifactUrl.origin !== new URL(this.authorization.serviceUrl).origin) {
+      fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid");
+    }
     const response = await this.#fetch(artifactUrl.toString(), {
       method: "GET",
-      headers: { authorization: `Session ${grant.sessionToken}` },
+      headers: cdn ? {} : { authorization: `Session ${grant.sessionToken}` },
       redirect: "error",
       ...(signal === undefined ? {} : { signal }),
     });
@@ -1134,6 +1157,21 @@ export class LicenseServiceClient {
     let artifactUrl: URL;
     try { artifactUrl = new URL(grant.downloadTicket.artifactUrl); }
     catch { fail("license_service_invalid_response", "Runtime artifact URL is invalid"); }
+    const cdn = grant.downloadTicket.artifactUrl === grant.artifact.url &&
+      isCdnArtifactUrl(grant.artifact.url, grant.artifact, grant.browserVersion);
+    if (cdn) {
+      const response = await this.#fetch(artifactUrl.toString(), {
+        method: "GET",
+        headers: {},
+        redirect: "error",
+        ...(signal === undefined ? {} : { signal }),
+      });
+      if (!response.ok || !response.body) await this.#throwResponse(response);
+      return response;
+    }
+    if (artifactUrl.origin !== new URL(this.authorization.serviceUrl).origin) {
+      fail("artifact_origin_invalid", "Runtime artifact origin is invalid");
+    }
     if (artifactUrl.pathname.startsWith("/v1/releases/artifacts/")) {
       artifactUrl.pathname = artifactUrl.pathname.replace("/v1/releases/artifacts/", "/v2/runtime/artifacts/");
     }

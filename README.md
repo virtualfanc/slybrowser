@@ -25,15 +25,15 @@ iframes, and supported runtime surfaces share one configuration.
 
 ## Install an SDK
 
-SlyBrowser 0.3.0 exposes one launch contract in four language packages. The npm page
+SlyBrowser 0.3.1 exposes one launch contract in four language packages. The npm page
 documents the Node.js package; use the matching registry for other languages.
 
 | Language | Install |
 | --- | --- |
-| Node.js | `npm install slybrowser@0.3.0` |
-| Python | `pip install slybrowser==0.3.0` |
-| Java | Maven coordinate `com.slybrowser:slybrowser:0.3.0` |
-| .NET | `dotnet add package SlyBrowser --version 0.3.0` |
+| Node.js | `npm install slybrowser@0.3.1` |
+| Python | `pip install slybrowser==0.3.1` |
+| Java | Maven coordinate `com.slybrowser:slybrowser:0.3.1` |
+| .NET | `dotnet add package SlyBrowser --version 0.3.1` |
 
 Each SDK downloads and verifies the authorized Browser and matched Sly WebDriver on
 first launch. Browser binaries are not embedded in the SDK package.
@@ -154,7 +154,7 @@ erase an earlier private blob and is never accepted as history sanitization.
 
 ## Default project WebDriver
 
-SlyBrowser 0.3.0 exposes the same entry point in Node.js, Python, Java, and .NET. Pass
+SlyBrowser 0.3.1 exposes the same entry point in Node.js, Python, Java, and .NET. Pass
 the authorization file and optionally set `profile`, `launch`, and `humanize`. No
 import command is required. The SDK selects and verifies the matching SlyBrowser and
 Sly WebDriver release; it never falls back to a system browser or driver.
@@ -226,8 +226,8 @@ await using browser = await launch("account.authorization.json", {
 });
 ```
 
-The enforced monthly plan matrix is Free $0 / 1 process, Basic $19 / 5, Pro $49 /
-20, Max $199 / 200 and Ultra $499 / 2,000. The complete signing, authorization,
+The enforced monthly plan matrix is Free $0 / 1 process, Basic $18 / 5, Pro $48 /
+20, Max $188 / 200 and Ultra $468 / 2,000. The complete signing, authorization,
 deployment and rotation procedure is in
 [Authorized browser delivery](docs/authorized-release-service.md).
 

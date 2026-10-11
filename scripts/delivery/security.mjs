@@ -173,7 +173,7 @@ export function evaluateSecurityGate({
   contractDigests = {},
   now = new Date(),
 }) {
-  const current = captureStagedCandidate(root);
+  const current = captureStagedCandidate(root, { comparisonBaseCommit: candidate.comparisonBaseCommit ?? null });
   if (current.candidateId !== candidate.candidateId || current.indexManifestDigest !== candidate.indexManifestDigest) {
     return {
       schemaVersion: 1, gateId: "security", candidateId: candidate.candidateId, status: "fail",

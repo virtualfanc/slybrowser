@@ -1,7 +1,7 @@
 # SlyBrowser for .NET
 
 ```sh
-dotnet add package SlyBrowser --version 0.3.0
+dotnet add package SlyBrowser --version 0.3.1
 ```
 
 `SlyBrowserClient.LaunchAsync()` accepts the authorization file plus optional

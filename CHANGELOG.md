@@ -5,6 +5,13 @@ All notable user-visible changes will be documented here once preview releases b
 The format follows Keep a Changelog principles, and versions will follow Semantic
 Versioning for SDK packages. Browser versions additionally record their Chromium base.
 
+## [0.3.1] - 2026-10-11
+
+### Changed
+
+- Four SDKs accept fixed CDN paths from verified signed Manifests without forwarding license credentials.
+- Legacy API-origin artifact downloads remain compatible.
+
 ## [0.3.0] - 2026-09-28
 
 ### Changed

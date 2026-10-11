@@ -55,6 +55,8 @@ function corruptBase64Url(value: string): string {
 
 type FixtureOptions = {
   tamperManifest?: boolean;
+  artifactUrl?: string;
+  runtimeTicketUrl?: string;
   sessionError?: boolean;
   sessionErrorCode?: string;
   sessionErrorStatus?: number;
@@ -105,7 +107,7 @@ function fixture(options: FixtureOptions = {}) {
     artifacts: [{
       platform: "windows",
       arch: "x64",
-      url: `https://api.slybrowser.test/v1/releases/artifacts/${sha256}.zip`,
+      url: options.artifactUrl ?? `https://api.slybrowser.test/v1/releases/artifacts/${sha256}.zip`,
       sha256,
       size: artifact.length,
       archiveFormat: "zip",
@@ -282,7 +284,7 @@ function fixture(options: FixtureOptions = {}) {
           token: downloadTicketToken,
           expiresAt: claims.expiresAt,
           artifactSha256: sha256,
-          artifactUrl: `https://api.slybrowser.test/v1/releases/artifacts/${sha256}.zip`,
+          artifactUrl: options.runtimeTicketUrl ?? `https://api.slybrowser.test/v1/releases/artifacts/${sha256}.zip`,
         },
       }, { status: 201 });
     }
@@ -356,6 +358,12 @@ function fixture(options: FixtureOptions = {}) {
     if (url.includes("/v1/releases/artifacts/")) {
       downloads += 1;
       expect((init?.headers as Record<string, string>).authorization).toBe(`Session ${sessionToken}`);
+      return new Response(artifact, { status: 200, headers: { "content-type": "application/zip" } });
+    }
+    if (url.startsWith("https://downloads.slybrowser.com/")) {
+      downloads += 1;
+      expect((init?.headers as Record<string, string>).authorization).toBeUndefined();
+      expect(init?.redirect).toBe("error");
       return new Response(artifact, { status: 200, headers: { "content-type": "application/zip" } });
     }
     if (init?.method === "DELETE") {
@@ -977,6 +985,25 @@ describe("authorized release client", () => {
     const context = fixture({ tamperManifest: true });
     await expect(context.client.createSession({ platform: "windows", arch: "x64" }))
       .rejects.toMatchObject({ code: "manifest_invalid_signature" });
+  });
+
+  it("downloads signed CDN artifacts without sending session or ticket credentials", async () => {
+    const url = "https://downloads.slybrowser.com/github.com/virtualfanc/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.zip";
+    const context = fixture({ artifactUrl: url, runtimeTicketUrl: url });
+    const session = await context.client.createSession({ platform: "windows", arch: "x64" });
+    expect((await context.client.downloadArtifact(session)).ok).toBe(true);
+    const runtime = await context.client.createRuntimeSession({
+      platform: "windows", arch: "x64", startupId: "st_nodev2runtime0001",
+    });
+    expect((await context.client.downloadRuntimeArtifact(runtime)).ok).toBe(true);
+    expect(context.downloads()).toBe(2);
+  });
+
+  it("rejects signed CDN URLs outside the fixed release path", async () => {
+    const bad = "https://downloads.slybrowser.com/github.com/attacker/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.zip";
+    const context = fixture({ artifactUrl: bad });
+    await expect(context.client.createSession({ platform: "windows", arch: "x64" }))
+      .rejects.toMatchObject({ code: "artifact_origin_invalid" });
   });
 
   it("preserves stable service concurrency errors", async () => {

@@ -21,6 +21,19 @@ import * as gateValidation from "../../scripts/delivery/validation.mjs";
 const now = new Date("2026-09-01T04:00:00.000Z");
 const candidateId = "git-tree:0123456789012345678901234567890123456789";
 
+test("comparison base builds an immutable two-tree whitespace command", () => {
+  const comparisonBaseCommit = "a".repeat(40);
+  const candidateTree = "b".repeat(40);
+  const invocation = buildScannerInvocation(loadBundledScannerPlan(), "git-diff-check", {
+    repositoryRoot: "r", candidateRoot: "c", comparisonBaseCommit, candidateTree,
+  });
+  assert.deepEqual(invocation.args, ["diff", "--check", comparisonBaseCommit, candidateTree]);
+  assert.equal(invocation.useGitIndex, false);
+  assert.throws(() => buildScannerInvocation(loadBundledScannerPlan(), "git-diff-check", {
+    repositoryRoot: "r", candidateRoot: "c", comparisonBaseCommit: "HEAD", candidateTree,
+  }), /comparison/);
+});
+
 test("canonical hashing is independent of object key order", () => {
   assert.equal(canonicalJson({ b: 2, a: 1 }), '{"a":1,"b":2}');
   assert.equal(hashObject({ a: 1, b: 2 }), hashObject({ b: 2, a: 1 }));

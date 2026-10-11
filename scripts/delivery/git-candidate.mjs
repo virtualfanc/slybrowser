@@ -71,7 +71,7 @@ export function readIndexBlobs(root, oids) {
   return blobs;
 }
 
-export function captureStagedCandidate(repositoryRoot) {
+export function captureStagedCandidate(repositoryRoot, { comparisonBaseCommit = null } = {}) {
   const root = resolve(repositoryRoot);
   const inside = runGit(root, ["rev-parse", "--is-inside-work-tree"]);
   if (inside.stdout.trim() !== "true") throw new Error("candidate repository is not a Git worktree");
@@ -81,7 +81,16 @@ export function captureStagedCandidate(repositoryRoot) {
   const entries = readIndexEntries(root);
   const head = runGit(root, ["rev-parse", "HEAD"], { allowFailure: true });
   const headCommit = head.status === 0 ? head.stdout.trim() : null;
-  const diff = runGit(root, ["diff", "--cached", "--raw", "-z", "--no-renames", ...(headCommit ? ["HEAD"] : ["--root"])], { buffer: true });
+  if (comparisonBaseCommit !== null) {
+    if (typeof comparisonBaseCommit !== "string" || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(comparisonBaseCommit)) {
+      throw new Error("comparison base must be a full immutable commit identity");
+    }
+    const type = runGit(root, ["cat-file", "-t", comparisonBaseCommit], { allowFailure: true });
+    if (type.status !== 0 || type.stdout.trim() !== "commit") throw new Error("comparison base is not an existing commit");
+  }
+  const comparisonArgs = comparisonBaseCommit ? [comparisonBaseCommit] : headCommit ? ["HEAD"] : ["--root"];
+  const manifest = comparisonBaseCommit ? { entries, comparisonBaseCommit } : entries;
+  const diff = runGit(root, ["diff", "--cached", "--raw", "-z", "--no-renames", ...comparisonArgs], { buffer: true });
   const stagedPaths = splitNull(diff.stdout)
     .filter((record) => !record.startsWith(":"))
     .map(normalizeRepositoryPath);
@@ -93,7 +102,8 @@ export function captureStagedCandidate(repositoryRoot) {
     candidateId: `git-tree:${tree}`,
     tree,
     headCommit,
-    indexManifestDigest: hashObject(entries),
+    ...(comparisonBaseCommit ? { comparisonBaseCommit } : {}),
+    indexManifestDigest: hashObject(manifest),
     stagedDiffDigest: sha256(diff.stdout),
     trackedFileCount: entries.length,
     stagedPaths,

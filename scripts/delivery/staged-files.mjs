@@ -36,13 +36,13 @@ function statusEntries(root) {
 }
 
 export function evaluateStagedFileAudit(root, candidate, policy, { contractDigests = {} } = {}) {
-  const current = captureStagedCandidate(root);
+  const current = captureStagedCandidate(root, { comparisonBaseCommit: candidate.comparisonBaseCommit ?? null });
   const errors = [];
   if (current.candidateId !== candidate.candidateId || current.indexManifestDigest !== candidate.indexManifestDigest) {
     errors.push("candidate changed before staged-file audit");
   }
   const entries = statusEntries(root);
-  const staged = entries.flatMap((entry) => {
+  const staged = candidate.comparisonBaseCommit ? [...current.stagedPaths].sort() : entries.flatMap((entry) => {
     if ([" ", "?"].includes(entry.indexStatus)) return [];
     return entry.indexStatus === "R" ? [entry.path, entry.originalPath] : [entry.path];
   }).sort();
@@ -57,10 +57,10 @@ export function evaluateStagedFileAudit(root, candidate, policy, { contractDiges
     if (entry.indexStatus === "?" && prohibitedUntracked.some((pattern) => matchGlob(entry.path, pattern))) {
       errors.push(`forbidden untracked artifact: ${entry.path}`);
     }
-    if (![" ", "?"].includes(entry.indexStatus)
-      && candidatePaths.has(entry.path)
-      && prohibitedStaged.some((pattern) => matchGlob(entry.path, pattern))) {
-      errors.push(`forbidden staged artifact: ${entry.path}`);
+  }
+  for (const path of staged) {
+    if (candidatePaths.has(path) && prohibitedStaged.some((pattern) => matchGlob(path, pattern))) {
+      errors.push(`forbidden staged artifact: ${path}`);
     }
   }
   return {

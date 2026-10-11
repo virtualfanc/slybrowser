@@ -42,6 +42,34 @@ function captureCandidate(root) {
   return { path: output, value: JSON.parse(readFileSync(output, "utf8")) };
 }
 
+test("comparison base CLI scans the publication delta and rejects actual whitespace", () => {
+  const root = fixtureRepository();
+  writeFileSync(join(root, "legacy.md"), "# Legacy\n\n");
+  git(root, ["add", "legacy.md"]);
+  git(root, ["commit", "-m", "fixture publication parent"]);
+  const parent = git(root, ["rev-parse", "HEAD"]);
+  writeFileSync(join(root, "legacy.md"), "# Local head\n");
+  git(root, ["add", "legacy.md"]);
+  git(root, ["commit", "-m", "fixture divergent local head"]);
+  git(root, ["read-tree", parent]);
+  for (const [name, contents, expected] of [["clean", "valid\n", 0], ["bad", "invalid \n", 1]]) {
+    writeFileSync(join(root, "added.md"), contents);
+    git(root, ["add", "added.md"]);
+    const candidatePath = join(root, `${name}.candidate.json`);
+    const capture = runNode(join(scripts, "candidate.mjs"), ["--repo", root, "--comparison-base", parent, "--output", candidatePath], root);
+    assert.equal(capture.status, 0, capture.stderr);
+    const candidate = JSON.parse(readFileSync(candidatePath));
+    assert.equal(candidate.comparisonBaseCommit, parent);
+    assert.deepEqual(candidate.stagedPaths, ["added.md"]);
+    const raw = join(root, `${name}.raw.json`), output = join(root, `${name}.runner.json`);
+    const scan = runNode(scannerRunner, ["--repo", root, "--candidate", candidatePath, "--id", "git-diff-check", "--raw-evidence", raw, "--raw-evidence-reference", `evidence://fixture/${name}`, "--output", output], root);
+    assert.equal(scan.status, expected, scan.stderr);
+    const receipt = runNode(join(scripts, "scanner-receipt.mjs"), ["--repo", root, "--candidate", candidatePath, "--runner-result", output, "--raw-evidence", raw, "--output", join(root, `${name}.receipt.json`)], root);
+    assert.equal(receipt.status, expected, receipt.stderr);
+    assert.equal(JSON.parse(readFileSync(output)).candidateManifestDigest, candidate.indexManifestDigest);
+  }
+});
+
 function gateReceipt(gateId, candidate, overrides = {}) {
   return {
     schemaVersion: 1,

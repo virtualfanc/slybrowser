@@ -166,6 +166,8 @@ class Fixture:
         self,
         *,
         tamper_manifest: bool = False,
+        artifact_url: str | None = None,
+        runtime_ticket_url: str | None = None,
         session_error: bool = False,
         session_error_code: str = "session_limit",
         session_error_status: int = 409,
@@ -218,7 +220,7 @@ class Fixture:
             "artifacts": [{
                 "platform": "windows",
                 "arch": "x64",
-                "url": f"https://api.slybrowser.test/v1/releases/artifacts/{sha256}.zip",
+                "url": artifact_url or f"https://api.slybrowser.test/v1/releases/artifacts/{sha256}.zip",
                 "sha256": sha256,
                 "size": len(self.artifact),
                 "archiveFormat": "zip",
@@ -262,6 +264,7 @@ class Fixture:
         if tamper_manifest:
             self.manifest["browserVersion"] = "151.0.0.0"
         self.session_error = session_error
+        self.runtime_ticket_url = runtime_ticket_url
         self.session_error_code = session_error_code
         self.session_error_status = session_error_status
         self.heartbeat_after_seconds = heartbeat_after_seconds
@@ -401,7 +404,7 @@ class Fixture:
                     "token": self.download_ticket_token,
                     "expiresAt": self.now + 600,
                     "artifactSha256": hashlib.sha256(self.artifact).hexdigest(),
-                    "artifactUrl": f"https://api.slybrowser.test/v1/releases/artifacts/{hashlib.sha256(self.artifact).hexdigest()}.zip",
+                    "artifactUrl": self.runtime_ticket_url or f"https://api.slybrowser.test/v1/releases/artifacts/{hashlib.sha256(self.artifact).hexdigest()}.zip",
                 },
             }).encode()
         if url.endswith(f"/v2/runtime/sessions/{self.session_id}/bootstrap-heartbeat") and method == "POST":
@@ -469,7 +472,9 @@ class Fixture:
 
     def download(self, _url: str, headers: dict[str, str], destination: Path) -> None:
         self.downloads += 1
-        if "/v2/runtime/artifacts/" in _url:
+        if _url.startswith("https://downloads.slybrowser.com/"):
+            assert headers == {}
+        elif "/v2/runtime/artifacts/" in _url:
             assert headers["Authorization"] == f"Download {self.download_ticket_token}"
         else:
             assert headers["Authorization"] == f"Session {self.session_token}"
@@ -1026,6 +1031,23 @@ class LicensedReleaseTests(unittest.TestCase):
         with self.assertRaises(ManifestError) as raised:
             client.create_session(platform="windows", arch="x64")
         self.assertEqual(raised.exception.code, "manifest_invalid_signature")
+
+    def test_signed_cdn_downloads_send_no_credentials(self) -> None:
+        url = "https://downloads.slybrowser.com/github.com/virtualfanc/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.zip"
+        fixture = Fixture(artifact_url=url, runtime_ticket_url=url)
+        client = fixture.client()
+        session = client.create_session(platform="windows", arch="x64")
+        runtime = client.create_runtime_session(platform="windows", arch="x64", startup_id="st_pythonv2runtime001")
+        with tempfile.TemporaryDirectory() as directory:
+            client.download_artifact(session, Path(directory, "session.zip"))
+            client.download_runtime_artifact(runtime, Path(directory, "runtime.zip"))
+        self.assertEqual(fixture.downloads, 2)
+
+    def test_signed_cdn_url_rejects_wrong_repository(self) -> None:
+        url = "https://downloads.slybrowser.com/github.com/attacker/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.zip"
+        with self.assertRaises(LicenseServiceError) as raised:
+            Fixture(artifact_url=url).client().create_session(platform="windows", arch="x64")
+        self.assertEqual(raised.exception.code, "artifact_origin_invalid")
 
     def test_preserves_session_limit_error(self) -> None:
         client = Fixture(session_error=True).client()

@@ -51,6 +51,42 @@ const securityPolicy = {
   requiredExternalScanners: ["repository-guard", "typecheck", "lint", "sast", "dependency-vulnerability", "dependency-license"],
 };
 
+test("comparison base binds the manifest and rejects mutable or non-commit parents", () => {
+  const root = tempRepository({ "README.md": "# Parent\n" });
+  const parent = git(root, ["rev-parse", "HEAD"]);
+  writeFileSync(join(root, "README.md"), "# Local head\n");
+  git(root, ["add", "README.md"]);
+  git(root, ["commit", "-m", "fixture local head"]);
+  const head = git(root, ["rev-parse", "HEAD"]);
+  git(root, ["read-tree", parent]);
+  const explicit = captureStagedCandidate(root, { comparisonBaseCommit: parent });
+  assert.equal(explicit.headCommit, head);
+  assert.equal(explicit.comparisonBaseCommit, parent);
+  assert.deepEqual(explicit.stagedPaths, []);
+  assert.notEqual(explicit.indexManifestDigest, captureStagedCandidate(root).indexManifestDigest);
+  writeFileSync(join(root, "added.md"), "valid\n");
+  git(root, ["add", "added.md"]);
+  const delta = captureStagedCandidate(root, { comparisonBaseCommit: parent });
+  const audit = evaluateStagedFileAudit(root, delta, {
+    prohibitedUntrackedPatterns: [], prohibitedStagedPatterns: [],
+  });
+  assert.equal(audit.status, "pass", audit.errors.join("; "));
+  assert.equal(audit.stagedFileCount, 1);
+  writeFileSync(join(root, "README.md"), "# Local head\n");
+  git(root, ["add", "README.md"]);
+  const headEqualDelta = captureStagedCandidate(root, { comparisonBaseCommit: parent });
+  assert.equal(evaluateStagedFileAudit(root, headEqualDelta, {
+    prohibitedUntrackedPatterns: [], prohibitedStagedPatterns: ["README.md"],
+  }).status, "fail");
+  assert.throws(() => captureStagedCandidate(root, { comparisonBaseCommit: "HEAD" }), /comparison/);
+  assert.throws(() => captureStagedCandidate(root, { comparisonBaseCommit: "f".repeat(40) }), /comparison/);
+  assert.throws(() => captureStagedCandidate(root, { comparisonBaseCommit: git(root, ["rev-parse", `${parent}^{tree}`]) }), /comparison/);
+  assert.throws(() => runScanner({ root, candidate: { ...headEqualDelta, comparisonBaseCommit: head },
+    scannerId: "git-diff-check", rawEvidenceReference: "evidence://fixture/tampered-base",
+    execute() { throw new Error("must not execute"); },
+  }), /candidate changed/);
+});
+
 test("candidate identity follows the exact index and ignores unstaged working-tree bytes", () => {
   const root = tempRepository({ "README.md": "# Baseline\n" });
   writeFileSync(join(root, "README.md"), "# Staged\n");

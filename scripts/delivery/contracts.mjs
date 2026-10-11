@@ -286,7 +286,7 @@ export function loadCanonicalContract(repositoryRoot, name, { candidate } = {}) 
   if (boundary.startsWith("../") || boundary === "..") throw new Error("canonical delivery contract escapes repository");
   let source;
   if (candidate) {
-    const current = captureStagedCandidate(root);
+    const current = captureStagedCandidate(root, { comparisonBaseCommit: candidate.comparisonBaseCommit ?? null });
     if (current.candidateId !== candidate.candidateId || current.indexManifestDigest !== candidate.indexManifestDigest) {
       throw new Error("candidate changed before canonical contract loading");
     }

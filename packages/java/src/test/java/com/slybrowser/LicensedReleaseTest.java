@@ -347,6 +347,39 @@ final class LicensedReleaseTest {
   }
 
   @Test
+  void signedCdnDownloadsDoNotSendCredentials() throws Exception {
+    String url = "https://downloads.slybrowser.com/github.com/virtualfanc/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.7z";
+    Fixture fixture = new Fixture(url, url);
+    LicenseServiceClient client = new LicenseServiceClient(new LicenseAuthorization(
+        "https://api.slybrowser.test", "sly_live_00000000-0000-4000-8000-000000000002." + "x".repeat(43), "stable"),
+        fixture.settings(temp).trust);
+    CreateSessionOptions sessionOptions = new CreateSessionOptions();
+    sessionOptions.platform = "windows";
+    sessionOptions.arch = "x64";
+    client.downloadArtifact(client.createSession(sessionOptions), temp.resolve("session.7z"));
+    CreateRuntimeSessionOptions runtimeOptions = new CreateRuntimeSessionOptions();
+    runtimeOptions.platform = "windows";
+    runtimeOptions.arch = "x64";
+    runtimeOptions.startupId = "st_javav2runtime0001";
+    client.downloadRuntimeArtifact(client.createRuntimeSession(runtimeOptions), temp.resolve("runtime.7z"));
+    assertEquals(2, fixture.downloads);
+  }
+
+  @Test
+  void signedCdnUrlRejectsWrongRepository() {
+    String url = "https://downloads.slybrowser.com/github.com/attacker/slybrowser/releases/download/sdk-v0.3.0/slybrowser-150.0.8000.1-win-x64.7z";
+    Fixture fixture = new Fixture(url, null);
+    LicenseServiceClient client = new LicenseServiceClient(new LicenseAuthorization(
+        "https://api.slybrowser.test", "sly_live_00000000-0000-4000-8000-000000000002." + "x".repeat(43), "stable"),
+        fixture.settings(temp).trust);
+    CreateSessionOptions options = new CreateSessionOptions();
+    options.platform = "windows";
+    options.arch = "x64";
+    assertEquals("artifact_origin_invalid", assertThrows(LicenseServiceException.class,
+        () -> client.createSession(options)).getCode());
+  }
+
+  @Test
   void preservesNullUpdatesThroughInRuntimeGrant() {
     Map<String, Object> updateRights = new LinkedHashMap<>();
     updateRights.put("status", "active");
@@ -645,6 +678,8 @@ final class LicensedReleaseTest {
     private final String sessionErrorCode;
     private final int sessionErrorStatus;
     private final String sessionToken = "session-token";
+    private String artifactUrl;
+    private String runtimeTicketUrl;
     final List<JsonNode> sessionRequests = new ArrayList<>();
     final List<JsonNode> runtimeSessionRequests = new ArrayList<>();
     int downloads;
@@ -659,6 +694,14 @@ final class LicensedReleaseTest {
       this.sessionError = sessionError;
       this.sessionErrorCode = sessionErrorCode;
       this.sessionErrorStatus = sessionErrorStatus;
+      this.artifactUrl = null;
+      this.runtimeTicketUrl = null;
+    }
+
+    Fixture(String artifactUrl, String runtimeTicketUrl) {
+      this(false, false);
+      this.artifactUrl = artifactUrl;
+      this.runtimeTicketUrl = runtimeTicketUrl;
     }
 
     Path writeAuthorization(Path directory) throws IOException {
@@ -807,7 +850,8 @@ final class LicensedReleaseTest {
         ticket.put("token", downloadTicketToken);
         ticket.put("expiresAt", now + 600);
         ticket.put("artifactSha256", artifactSha256);
-        ticket.put("artifactUrl", "https://api.slybrowser.test/v1/releases/artifacts/" + artifactSha256 + ".7z");
+        ticket.put("artifactUrl", runtimeTicketUrl == null ?
+            "https://api.slybrowser.test/v1/releases/artifacts/" + artifactSha256 + ".7z" : runtimeTicketUrl);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("schemaVersion", 2);
@@ -887,7 +931,9 @@ final class LicensedReleaseTest {
     }
 
     private void download(String url, Map<String, String> headers, Path destination) {
-      if (url.contains("/v2/runtime/artifacts/")) {
+      if (url.startsWith("https://downloads.slybrowser.com/")) {
+        assertTrue(headers.isEmpty());
+      } else if (url.contains("/v2/runtime/artifacts/")) {
         assertEquals("Download " + downloadTicketToken, headers.get("Authorization"));
       } else {
         assertEquals("Session " + sessionToken, headers.get("Authorization"));
@@ -985,7 +1031,8 @@ final class LicensedReleaseTest {
       Map<String, Object> artifact = new LinkedHashMap<>();
       artifact.put("platform", "windows");
       artifact.put("arch", "x64");
-      artifact.put("url", "https://api.slybrowser.test/v1/releases/artifacts/" + artifactSha256 + ".7z");
+      artifact.put("url", artifactUrl == null ?
+          "https://api.slybrowser.test/v1/releases/artifacts/" + artifactSha256 + ".7z" : artifactUrl);
       artifact.put("sha256", artifactSha256);
       artifact.put("size", archive.length);
       artifact.put("archiveFormat", "7z");

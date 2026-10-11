@@ -12,7 +12,7 @@ try {
   requireOnlyOptions(options, optionNames);
   const root = resolve(options.repo);
   const candidate = readJson(options.candidate);
-  const current = captureStagedCandidate(root);
+  const current = captureStagedCandidate(root, { comparisonBaseCommit: candidate.comparisonBaseCommit ?? null });
   if (current.candidateId !== candidate.candidateId || current.indexManifestDigest !== candidate.indexManifestDigest) {
     throw new Error("candidate changed before RGR validation");
   }

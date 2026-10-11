@@ -33,6 +33,27 @@ _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
 _ARTIFACT_DEADLINE_SECONDS = 90 * 60
 _ARTIFACT_BACKOFF_SECONDS = (1, 2)
 _ARTIFACT_RETRY_STATUSES = frozenset({429, 502, 503, 504})
+_CDN_ARTIFACT_ORIGIN = "https://downloads.slybrowser.com"
+_CDN_ARTIFACT_PREFIX = "/github.com/virtualfanc/slybrowser/releases/download/"
+
+
+def _is_cdn_artifact_url(url: str, artifact: ReleaseArtifact, browser_version: str) -> bool:
+    target = {"windows": "win", "linux": "linux", "macos": "mac"}.get(artifact.platform)
+    if target is None:
+        return False
+    filename = f"slybrowser-{browser_version}-{target}-{artifact.arch}.{artifact.archiveFormat}"
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    if (parsed.scheme != "https" or parsed.netloc != "downloads.slybrowser.com"
+            or parsed.query or parsed.fragment or parsed.username or parsed.password
+            or not parsed.path.startswith(_CDN_ARTIFACT_PREFIX)):
+        return False
+    remainder = parsed.path[len(_CDN_ARTIFACT_PREFIX):]
+    tag, separator, name = remainder.partition("/")
+    return (bool(separator) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", tag) is not None
+            and name == filename and url == f"{_CDN_ARTIFACT_ORIGIN}{parsed.path}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -693,7 +714,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.3.0",
+        sdk_version: str = "0.3.1",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -818,7 +839,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.3.0",
+        sdk_version: str = "0.3.1",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -922,8 +943,9 @@ class LicenseServiceClient:
         artifact = manifest.select(platform, arch)
         artifact_origin = urllib.parse.urlparse(artifact.url)
         service_origin = urllib.parse.urlparse(self.authorization.service_url)
-        if (artifact_origin.scheme, artifact_origin.netloc) != (service_origin.scheme, service_origin.netloc):
-            raise _fail("artifact_origin_invalid", "Authorized artifacts must use the license service origin")
+        if ((artifact_origin.scheme, artifact_origin.netloc) != (service_origin.scheme, service_origin.netloc)
+                and not _is_cdn_artifact_url(artifact.url, artifact, selected_browser_version)):
+            raise _fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid")
         plan = value.get("plan")
         concurrency = value.get("concurrencyLimit")
         active = value.get("activeSessions")
@@ -955,7 +977,7 @@ class LicenseServiceClient:
         arch: str,
         startup_id: str | None = None,
         automation_backend: str | None = None,
-        sdk_version: str = "0.3.0",
+        sdk_version: str = "0.3.1",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -1081,8 +1103,9 @@ class LicenseServiceClient:
         artifact = manifest.select(platform, arch)
         artifact_origin = urllib.parse.urlparse(artifact.url)
         service_origin = urllib.parse.urlparse(self.authorization.service_url)
-        if (artifact_origin.scheme, artifact_origin.netloc) != (service_origin.scheme, service_origin.netloc):
-            raise _fail("artifact_origin_invalid", "Authorized artifacts must use the license service origin")
+        if ((artifact_origin.scheme, artifact_origin.netloc) != (service_origin.scheme, service_origin.netloc)
+                and not _is_cdn_artifact_url(artifact.url, artifact, selected_browser_version)):
+            raise _fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid")
         ticket = value.get("downloadTicket")
         if not isinstance(ticket, Mapping):
             raise _fail("license_service_invalid_response", "Runtime download ticket response is invalid")
@@ -1099,7 +1122,9 @@ class LicenseServiceClient:
             or ticket_expires_at != expires_at
             or artifact_sha256 != artifact.sha256
             or not isinstance(artifact_url, str)
-            or (ticket_origin.scheme, ticket_origin.netloc) != (service_origin.scheme, service_origin.netloc)
+            or ((ticket_origin.scheme, ticket_origin.netloc) != (service_origin.scheme, service_origin.netloc)
+                and not (artifact_url == artifact.url
+                    and _is_cdn_artifact_url(artifact.url, artifact, selected_browser_version)))
         ):
             raise _fail("license_service_invalid_response", "Runtime download ticket response is invalid")
         plan = value.get("plan")
@@ -1242,15 +1267,20 @@ class LicenseServiceClient:
     def download_artifact(self, grant: LicensedSessionGrant, destination: str | Path) -> None:
         parsed_service = urllib.parse.urlparse(self.authorization.service_url)
         parsed_artifact = urllib.parse.urlparse(grant.artifact.url)
-        if (parsed_artifact.scheme, parsed_artifact.netloc) != (parsed_service.scheme, parsed_service.netloc):
-            raise _fail("artifact_origin_invalid", "Authorized artifacts must use the license service origin")
+        cdn = _is_cdn_artifact_url(grant.artifact.url, grant.artifact, grant.browser_version)
+        if not cdn and (parsed_artifact.scheme, parsed_artifact.netloc) != (parsed_service.scheme, parsed_service.netloc):
+            raise _fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid")
         self._artifact_downloader(
             grant.artifact.url,
-            {"Authorization": f"Session {grant.session_token}"},
+            {} if cdn else {"Authorization": f"Session {grant.session_token}"},
             Path(destination),
         )
 
     def download_runtime_artifact(self, grant: RuntimeSessionGrant, destination: str | Path) -> None:
+        if (grant.download_ticket.artifact_url == grant.artifact.url
+                and _is_cdn_artifact_url(grant.artifact.url, grant.artifact, grant.browser_version)):
+            self._artifact_downloader(grant.artifact.url, {}, Path(destination))
+            return
         parsed_service = urllib.parse.urlparse(self.authorization.service_url)
         parsed_artifact = urllib.parse.urlparse(grant.download_ticket.artifact_url)
         if (parsed_artifact.scheme, parsed_artifact.netloc) != (parsed_service.scheme, parsed_service.netloc):
