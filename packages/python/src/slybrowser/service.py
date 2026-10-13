@@ -611,7 +611,15 @@ def _default_transport(method: str, url: str, headers: Mapping[str, str], body: 
         return error.code, error.read()
 
 
-def _default_artifact_downloader(url: str, headers: Mapping[str, str], destination: Path) -> None:
+class _IncompleteArtifactDownload(OSError):
+    pass
+
+
+def _default_artifact_downloader(
+    url: str, headers: Mapping[str, str], destination: Path, *, expected_size: int | None = None
+) -> None:
+    if expected_size is not None and (type(expected_size) is not int or expected_size < 1):
+        raise _fail("artifact_size_mismatch", "Signed artifact size is invalid", 0)
     request = urllib.request.Request(url, headers=dict(headers), method="GET")
     if destination.exists():
         raise FileExistsError(destination)
@@ -622,6 +630,7 @@ def _default_artifact_downloader(url: str, headers: Mapping[str, str], destinati
             raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
         completed = False
         created = False
+        received = 0
         try:
             with _NO_REDIRECT_OPENER.open(request, timeout=remaining) as response:
                 try:
@@ -643,6 +652,9 @@ def _default_artifact_downloader(url: str, headers: Mapping[str, str], destinati
                         chunk = response.read(1024 * 1024)
                         if not chunk:
                             break
+                        received += len(chunk)
+                        if expected_size is not None and received > expected_size:
+                            raise _fail("artifact_size_mismatch", "Artifact download exceeds its signed size", 0)
                         try:
                             output.write(chunk)
                         except OSError as error:
@@ -654,6 +666,8 @@ def _default_artifact_downloader(url: str, headers: Mapping[str, str], destinati
                         output.close()
                     except OSError as error:
                         raise _fail("artifact_download_failed", "Artifact destination close failed", 0) from error
+            if expected_size is not None and received < expected_size:
+                raise _IncompleteArtifactDownload("Artifact stream ended before its signed size")
             completed = True
             return
         except urllib.error.HTTPError as error:
@@ -674,6 +688,8 @@ def _default_artifact_downloader(url: str, headers: Mapping[str, str], destinati
                 raise
         except (urllib.error.URLError, OSError) as error:
             if attempt == 2:
+                if isinstance(error, _IncompleteArtifactDownload):
+                    raise _fail("artifact_size_mismatch", "Artifact download ended before its signed size", 0) from error
                 raise _fail("artifact_download_failed", "Artifact download transport failed", 0) from error
         finally:
             if created and not completed:
@@ -714,7 +730,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.3.1",
+        sdk_version: str = "0.3.2",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -839,7 +855,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.3.1",
+        sdk_version: str = "0.3.2",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -977,7 +993,7 @@ class LicenseServiceClient:
         arch: str,
         startup_id: str | None = None,
         automation_backend: str | None = None,
-        sdk_version: str = "0.3.1",
+        sdk_version: str = "0.3.2",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -1264,22 +1280,31 @@ class LicenseServiceClient:
             authorization=authorization,
         )
 
+    def _download_with_signed_size(
+        self, url: str, headers: Mapping[str, str], destination: Path, expected_size: int
+    ) -> None:
+        if self._artifact_downloader is _default_artifact_downloader:
+            _default_artifact_downloader(url, headers, destination, expected_size=expected_size)
+        else:
+            self._artifact_downloader(url, headers, destination)
+
     def download_artifact(self, grant: LicensedSessionGrant, destination: str | Path) -> None:
         parsed_service = urllib.parse.urlparse(self.authorization.service_url)
         parsed_artifact = urllib.parse.urlparse(grant.artifact.url)
         cdn = _is_cdn_artifact_url(grant.artifact.url, grant.artifact, grant.browser_version)
         if not cdn and (parsed_artifact.scheme, parsed_artifact.netloc) != (parsed_service.scheme, parsed_service.netloc):
             raise _fail("artifact_origin_invalid", "Authorized artifact origin or CDN path is invalid")
-        self._artifact_downloader(
+        self._download_with_signed_size(
             grant.artifact.url,
             {} if cdn else {"Authorization": f"Session {grant.session_token}"},
             Path(destination),
+            grant.artifact.size,
         )
 
     def download_runtime_artifact(self, grant: RuntimeSessionGrant, destination: str | Path) -> None:
         if (grant.download_ticket.artifact_url == grant.artifact.url
                 and _is_cdn_artifact_url(grant.artifact.url, grant.artifact, grant.browser_version)):
-            self._artifact_downloader(grant.artifact.url, {}, Path(destination))
+            self._download_with_signed_size(grant.artifact.url, {}, Path(destination), grant.artifact.size)
             return
         parsed_service = urllib.parse.urlparse(self.authorization.service_url)
         parsed_artifact = urllib.parse.urlparse(grant.download_ticket.artifact_url)
@@ -1298,10 +1323,11 @@ class LicenseServiceClient:
             "",
             "",
         ))
-        self._artifact_downloader(
+        self._download_with_signed_size(
             runtime_url,
             {"Authorization": f"Download {grant.download_ticket.token}"},
             Path(destination),
+            grant.artifact.size,
         )
 
     def _runtime_heartbeat_grant(
