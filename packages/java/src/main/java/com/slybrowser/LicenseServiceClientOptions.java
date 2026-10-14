@@ -11,7 +11,7 @@ public final class LicenseServiceClientOptions {
   public JsonTransport transport;
   public ArtifactDownloader artifactDownloader;
   public boolean allowInsecureLocalhost;
-  public String sdkVersion = "0.3.2";
+  public String sdkVersion = "0.3.3";
 
   @FunctionalInterface
   public interface JsonTransport {

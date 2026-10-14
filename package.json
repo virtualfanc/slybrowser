@@ -1,6 +1,6 @@
 {
   "name": "@slybrowser/workspace",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "SlyBrowser SDK and release-tooling workspace",
   "packageManager": "pnpm@10.15.1",

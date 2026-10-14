@@ -155,7 +155,7 @@ public sealed class LicenseServiceClientOptions
         new HashSet<string>(["https://api.slybrowser.com"], StringComparer.Ordinal);
     public HttpClient? HttpClient { get; init; }
     public bool AllowInsecureLocalhost { get; init; }
-    public string SdkVersion { get; init; } = "0.3.2";
+    public string SdkVersion { get; init; } = "0.3.3";
 }
 
 public sealed class CreateSessionOptions

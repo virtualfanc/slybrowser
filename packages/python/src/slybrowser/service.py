@@ -615,89 +615,136 @@ class _IncompleteArtifactDownload(OSError):
     pass
 
 
+def _artifact_response_start(response: Any, offset: int, expected_size: int | None) -> int:
+    fields = getattr(response, "headers", None) or {}
+
+    def field(name: str) -> str | None:
+        if hasattr(fields, "get_all") and len(fields.get_all(name) or []) > 1:
+            raise _fail("artifact_size_mismatch", "Artifact response has duplicate size headers", 0)
+        value = fields.get(name)
+        if value is not None and not isinstance(value, str):
+            raise _fail("artifact_size_mismatch", "Artifact response size header is invalid", 0)
+        return value.strip() if value is not None else None
+
+    encoding = field("Content-Encoding")
+    if encoding is not None and encoding.lower() != "identity":
+        raise _fail("artifact_size_mismatch", "Artifact response encoding is not byte-preserving", 0)
+    content_range = field("Content-Range")
+    if response.status == 200:
+        if content_range is not None:
+            raise _fail("artifact_size_mismatch", "Full artifact response contains a partial range", 0)
+        start = 0
+    elif response.status == 206 and offset > 0 and expected_size is not None:
+        match = re.fullmatch(r"bytes ([0-9]{1,20})-([0-9]{1,20})/([0-9]{1,20})", content_range or "")
+        if not match or tuple(map(int, match.groups())) != (offset, expected_size - 1, expected_size):
+            raise _fail("artifact_size_mismatch", "Artifact range does not match the signed size and requested offset", 0)
+        start = offset
+    else:
+        raise _fail("artifact_download_failed", f"Artifact download failed with HTTP {response.status}", response.status)
+    length = field("Content-Length")
+    if length is not None:
+        if not re.fullmatch(r"[0-9]{1,20}", length) or (expected_size is not None and int(length) != expected_size - start):
+            raise _fail("artifact_size_mismatch", "Artifact response length does not match its signed size", 0)
+    return start
+
+
 def _default_artifact_downloader(
     url: str, headers: Mapping[str, str], destination: Path, *, expected_size: int | None = None
 ) -> None:
     if expected_size is not None and (type(expected_size) is not int or expected_size < 1):
         raise _fail("artifact_size_mismatch", "Signed artifact size is invalid", 0)
-    request = urllib.request.Request(url, headers=dict(headers), method="GET")
+    if any(name.lower() in {"range", "if-range"} for name in headers):
+        raise _fail("artifact_download_failed", "Artifact ranges are managed by the signed download", 0)
     if destination.exists():
         raise FileExistsError(destination)
     deadline = time.monotonic() + _ARTIFACT_DEADLINE_SECONDS
-    for attempt in range(3):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
-        completed = False
-        created = False
-        received = 0
-        try:
-            with _NO_REDIRECT_OPENER.open(request, timeout=remaining) as response:
-                try:
-                    output = destination.open("xb")
-                except OSError as error:
-                    raise _fail("artifact_download_failed", "Artifact destination open failed", 0) from error
-                created = True
-                try:
-                    if response.status != 200:
-                        raise _fail("artifact_download_failed", f"Artifact download failed with HTTP {response.status}", response.status)
-                    while True:
-                        remaining = deadline - time.monotonic()
-                        if remaining <= 0:
-                            raise TimeoutError("Artifact download exceeded 90 minutes")
-                        # urllib has no total streaming deadline; tighten the socket before every read.
-                        stream_socket = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
-                        if stream_socket is not None:
-                            stream_socket.settimeout(remaining)
-                        chunk = response.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        received += len(chunk)
-                        if expected_size is not None and received > expected_size:
-                            raise _fail("artifact_size_mismatch", "Artifact download exceeds its signed size", 0)
-                        try:
-                            output.write(chunk)
-                        except OSError as error:
-                            raise _fail("artifact_download_failed", "Artifact destination write failed", 0) from error
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError("Artifact download exceeded 90 minutes")
-                finally:
-                    try:
-                        output.close()
-                    except OSError as error:
-                        raise _fail("artifact_download_failed", "Artifact destination close failed", 0) from error
-            if expected_size is not None and received < expected_size:
-                raise _IncompleteArtifactDownload("Artifact stream ended before its signed size")
-            completed = True
-            return
-        except urllib.error.HTTPError as error:
-            status = error.code
+    completed = False
+    owned = False
+    received = 0
+    try:
+        for attempt in range(3):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
+            if owned and (destination.is_symlink() or not destination.is_file() or destination.stat().st_size != received):
+                raise _fail("artifact_download_failed", "Owned artifact file changed during recovery", 0)
+            if expected_size is not None and received == expected_size:
+                completed = True
+                return
+            offset = received if expected_size is not None else 0
+            request_headers = dict(headers)
+            if offset:
+                request_headers["Range"] = f"bytes={offset}-"
+            request = urllib.request.Request(url, headers=request_headers, method="GET")
             try:
-                payload = json.loads(error.read())
-                remote = payload.get("error", {})
-                details = dict(remote)
-                details.pop("code", None)
-                details.pop("message", None)
-                failure = _fail(str(remote.get("code") or "artifact_download_failed"), str(remote.get("message") or error), status, details)
-            except (ValueError, AttributeError, TypeError):
-                failure = _fail("artifact_download_failed", f"Artifact download failed with HTTP {status}", status)
-            if status not in _ARTIFACT_RETRY_STATUSES or attempt == 2:
-                raise failure from error
-        except LicenseServiceError as error:
-            if error.status not in _ARTIFACT_RETRY_STATUSES or attempt == 2:
-                raise
-        except (urllib.error.URLError, OSError) as error:
-            if attempt == 2:
-                if isinstance(error, _IncompleteArtifactDownload):
-                    raise _fail("artifact_size_mismatch", "Artifact download ended before its signed size", 0) from error
-                raise _fail("artifact_download_failed", "Artifact download transport failed", 0) from error
-        finally:
-            if created and not completed:
-                destination.unlink(missing_ok=True)
-        backoff = _ARTIFACT_BACKOFF_SECONDS[attempt]
-        if deadline - time.monotonic() <= backoff:
-            raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
-        time.sleep(backoff)
+                with _NO_REDIRECT_OPENER.open(request, timeout=remaining) as response:
+                    start = _artifact_response_start(response, offset, expected_size)
+                    mode = "ab" if start else "wb" if owned else "xb"
+                    try:
+                        output = destination.open(mode)
+                    except OSError as error:
+                        raise _fail("artifact_download_failed", "Artifact destination open failed", 0) from error
+                    owned = True
+                    received = start
+                    try:
+                        while True:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError("Artifact download exceeded 90 minutes")
+                            # urllib has no total streaming deadline; tighten it before every read.
+                            stream_socket = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+                            if stream_socket is not None:
+                                stream_socket.settimeout(remaining)
+                            chunk = response.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            if expected_size is not None and received + len(chunk) > expected_size:
+                                raise _fail("artifact_size_mismatch", "Artifact download exceeds its signed size", 0)
+                            try:
+                                if output.write(chunk) != len(chunk):
+                                    raise OSError("Incomplete destination write")
+                            except OSError as error:
+                                raise _fail("artifact_download_failed", "Artifact destination write failed", 0) from error
+                            received += len(chunk)
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("Artifact download exceeded 90 minutes")
+                    finally:
+                        try:
+                            output.close()
+                        except OSError as error:
+                            raise _fail("artifact_download_failed", "Artifact destination close failed", 0) from error
+                if expected_size is not None and received < expected_size:
+                    raise _IncompleteArtifactDownload("Artifact stream ended before its signed size")
+                completed = True
+                return
+            except urllib.error.HTTPError as error:
+                status = error.code
+                try:
+                    payload = json.loads(error.read())
+                    remote = payload.get("error", {})
+                    details = dict(remote)
+                    details.pop("code", None)
+                    details.pop("message", None)
+                    failure = _fail(str(remote.get("code") or "artifact_download_failed"), str(remote.get("message") or error), status, details)
+                except (ValueError, AttributeError, TypeError):
+                    failure = _fail("artifact_download_failed", f"Artifact download failed with HTTP {status}", status)
+                if status not in _ARTIFACT_RETRY_STATUSES or attempt == 2:
+                    raise failure from error
+            except LicenseServiceError as error:
+                if error.status not in _ARTIFACT_RETRY_STATUSES or attempt == 2:
+                    raise
+            except (urllib.error.URLError, OSError) as error:
+                if attempt == 2:
+                    if isinstance(error, _IncompleteArtifactDownload):
+                        raise _fail("artifact_size_mismatch", "Artifact download ended before its signed size", 0) from error
+                    raise _fail("artifact_download_failed", "Artifact download transport failed", 0) from error
+            backoff = _ARTIFACT_BACKOFF_SECONDS[attempt]
+            if deadline - time.monotonic() <= backoff:
+                raise _fail("artifact_download_failed", "Artifact download exceeded 90 minutes")
+            time.sleep(backoff)
+    finally:
+        if owned and not completed:
+            destination.unlink(missing_ok=True)
 
 
 class LicenseServiceClient:
@@ -730,7 +777,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.3.2",
+        sdk_version: str = "0.3.3",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -855,7 +902,7 @@ class LicenseServiceClient:
         *,
         platform: str,
         arch: str,
-        sdk_version: str = "0.3.2",
+        sdk_version: str = "0.3.3",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
@@ -993,7 +1040,7 @@ class LicenseServiceClient:
         arch: str,
         startup_id: str | None = None,
         automation_backend: str | None = None,
-        sdk_version: str = "0.3.2",
+        sdk_version: str = "0.3.3",
         device_hash: str | None = None,
         kernel_major: int | str | None = None,
         update_kernel: bool | None = None,
