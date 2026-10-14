@@ -7,9 +7,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$python = Get-Command python -ErrorAction Stop
-$pnpm = Get-Command pnpm -ErrorAction Stop
-$pnpmPath = if ($pnpm.Source) { $pnpm.Source } elseif ($pnpm.FullName) { $pnpm.FullName } else { $pnpm.Path }
 
 function Invoke-Checked {
     param([Parameter(Mandatory)][string]$FilePath, [Parameter()][string[]]$Arguments = @())
@@ -64,6 +61,10 @@ Push-Location $repoRoot
 try {
     Test-RepositoryGuard
     if ($RepositoryGuardOnly) { return }
+
+    $python = Get-Command python -ErrorAction Stop
+    $pnpm = Get-Command pnpm -ErrorAction Stop
+    $pnpmPath = if ($pnpm.Source) { $pnpm.Source } elseif ($pnpm.FullName) { $pnpm.FullName } else { $pnpm.Path }
 
     Invoke-Checked -FilePath 'powershell' -Arguments @(
         '-NoProfile',
