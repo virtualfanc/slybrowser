@@ -20,12 +20,19 @@ function Invoke-Checked {
 function Test-RepositoryGuard {
     Invoke-Checked -FilePath 'git' -Arguments @('diff', '--check')
 
-    $secretMatches = & rg -n 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AIza[0-9A-Za-z_-]{20,}' . -g '!**/.git/**' -g '!node_modules/**'
-    if ($LASTEXITCODE -eq 0) {
-        throw "Potential secret material found:`n$secretMatches"
-    }
-    if ($LASTEXITCODE -ne 1) {
-        throw 'Secret scan failed.'
+    $secretPattern = 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AIza[0-9A-Za-z_-]{20,}'
+    $secretScanner = Get-Command rg -ErrorAction SilentlyContinue
+    if ($secretScanner) {
+        $secretMatches = & $secretScanner.Source -n $secretPattern . -g '!**/.git/**' -g '!node_modules/**'
+        if ($LASTEXITCODE -eq 0) { throw "Potential secret material found:`n$secretMatches" }
+        if ($LASTEXITCODE -ne 1) { throw 'Secret scan failed.' }
+    } else {
+        $scanPaths = @(& git ls-files --cached --others --exclude-standard)
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate secret-scan paths.' }
+        $secretMatches = @($scanPaths | Sort-Object -Unique | Where-Object { $_ -notmatch '(^|/)(\.git|node_modules)(/|$)' } | ForEach-Object {
+            if (Test-Path -LiteralPath $_ -PathType Leaf) { Select-String -LiteralPath $_ -Pattern $secretPattern -ErrorAction Stop }
+        })
+        if ($secretMatches.Count -gt 0) { throw "Potential secret material found:`n$secretMatches" }
     }
 
     $trackedFiles = & git ls-files

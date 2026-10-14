@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { hashObject, normalizeRepositoryPath, parseArgs, readJson, readJsonDirectory, requireOnlyOptions, requireOptions, safeCliError, writeJson } from "./core.mjs";
+import { hashObject, parseArgs, readJson, readJsonDirectory, requireOnlyOptions, requireOptions, safeCliError, writeJson } from "./core.mjs";
+import { resolveRawEvidencePath } from "./raw-evidence-path.mjs";
 import { loadCanonicalContract } from "./contracts.mjs";
 import { captureStagedCandidate } from "./git-candidate.mjs";
 import { validateFourBindingReceipts } from "./validation.mjs";
@@ -28,10 +29,7 @@ try {
   );
   const rawRoot = resolve(options["raw-evidence-root"]);
   const rawEvidenceByCase = new Map(caseReceipts.map((receipt) => {
-    const relativePath = normalizeRepositoryPath(receipt.rawEvidence?.path ?? "");
-    const path = resolve(rawRoot, ...relativePath.split("/"));
-    const prefix = `${rawRoot.toLowerCase()}${rawRoot.endsWith("\\") ? "" : "\\"}`;
-    if (!path.toLowerCase().startsWith(prefix)) throw new Error(`raw evidence path escapes root for ${receipt.caseId}`);
+    const path = resolveRawEvidencePath(rawRoot, receipt.rawEvidence?.path ?? "", receipt.caseId);
     return [receipt.caseId, readFileSync(path)];
   }));
   const result = validateFourBindingReceipts(plan.value, caseReceipts, candidate.candidateId, {
