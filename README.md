@@ -25,15 +25,15 @@ iframes, and supported runtime surfaces share one configuration.
 
 ## Install an SDK
 
-SlyBrowser 0.3.1 exposes one launch contract in four language packages. The npm page
+SlyBrowser 0.3.3 exposes one launch contract in four language packages. Python archive downloads support bounded recovery from truncated responses while retaining signed size and SHA-256 verification. The npm page
 documents the Node.js package; use the matching registry for other languages.
 
 | Language | Install |
 | --- | --- |
-| Node.js | `npm install slybrowser@0.3.1` |
-| Python | `pip install slybrowser==0.3.1` |
-| Java | Maven coordinate `com.slybrowser:slybrowser:0.3.1` |
-| .NET | `dotnet add package SlyBrowser --version 0.3.1` |
+| Node.js | `npm install slybrowser@0.3.3` |
+| Python | `pip install slybrowser==0.3.3` |
+| Java | Maven coordinate `com.slybrowser:slybrowser:0.3.3` |
+| .NET | `dotnet add package SlyBrowser --version 0.3.3` |
 
 Each SDK downloads and verifies the authorized Browser and matched Sly WebDriver on
 first launch. Browser binaries are not embedded in the SDK package.
@@ -154,7 +154,7 @@ erase an earlier private blob and is never accepted as history sanitization.
 
 ## Default project WebDriver
 
-SlyBrowser 0.3.1 exposes the same entry point in Node.js, Python, Java, and .NET. Pass
+SlyBrowser 0.3.3 exposes the same entry point in Node.js, Python, Java, and .NET. Pass
 the authorization file and optionally set `profile`, `launch`, and `humanize`. No
 import command is required. The SDK selects and verifies the matching SlyBrowser and
 Sly WebDriver release; it never falls back to a system browser or driver.
