@@ -1142,6 +1142,8 @@ describe("authorized release client", () => {
     };
     const browser = await launchLatestPlaywright(playwright, authorizationFile, {
       trust: context.trust,
+      platform: "windows",
+      arch: "x64",
       install: { cacheRoot, extractor },
       frameworkVersion: "1.62.1",
       launchOptions: { args: ["--no-first-run"] },
@@ -1191,6 +1193,8 @@ describe("authorized release client", () => {
     };
     const puppeteerBrowser = await launchLatestPuppeteer(puppeteer, authorizationFile, {
       trust: context.trust,
+      platform: "windows",
+      arch: "x64",
       install: { cacheRoot, extractor },
       frameworkVersion: "25.8.0",
     });
@@ -1241,6 +1245,8 @@ describe("authorized release client", () => {
     };
     await expect(launchLatestPlaywright(playwright, authorizationFile, {
       trust: context.trust,
+      platform: "windows",
+      arch: "x64",
       install: { cacheRoot, extractor },
       frameworkVersion: "1.62.1",
     })).rejects.toMatchObject({ code: "browser_version_chain_mismatch" });
