@@ -645,7 +645,7 @@ export class LicenseServiceClient {
   } = {}): Promise<LicenseInfo> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.3.3";
+    const sdkVersion = options.sdkVersion ?? "0.3.4";
     const versionPolicy = options.versionPolicy ?? (options.browserVersion === undefined ? "latest" : "exact");
     if (versionPolicy === "latest" && options.browserVersion !== undefined) {
       fail("version_policy_invalid", "Latest selection cannot include a requested browser version");
@@ -760,7 +760,7 @@ export class LicenseServiceClient {
   } = {}): Promise<LicensedSessionGrant> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.3.3";
+    const sdkVersion = options.sdkVersion ?? "0.3.4";
     const versionPolicy = options.versionPolicy ?? (options.browserVersion === undefined ? "latest" : "exact");
     if (versionPolicy === "latest" && options.browserVersion !== undefined) {
       fail("version_policy_invalid", "Latest selection cannot include a requested browser version");
@@ -897,7 +897,7 @@ export class LicenseServiceClient {
   } = {}): Promise<RuntimeSessionGrant> {
     const platform = options.platform ?? currentPlatform();
     const arch = options.arch ?? currentArch();
-    const sdkVersion = options.sdkVersion ?? "0.3.3";
+    const sdkVersion = options.sdkVersion ?? "0.3.4";
     const startupId = options.startupId ?? newStartupId();
     if (!/^st_[A-Za-z0-9_-]{16,120}$/.test(startupId)) {
       fail("startup_id_invalid", "Runtime startup ID is invalid");

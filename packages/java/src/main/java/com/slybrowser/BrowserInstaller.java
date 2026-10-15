@@ -345,7 +345,7 @@ public final class BrowserInstaller {
           !installation.root.equals(resolvedRoot) ||
           !installation.browserExecutable.startsWith(resolvedRoot) ||
           !installation.driverExecutable.startsWith(resolvedRoot) ||
-          !installation.browserExecutable.getParent().equals(installation.driverExecutable.getParent()) ||
+          !runtimePairLayoutMatches(installation.browserExecutable, installation.driverExecutable, platform) ||
           !Files.isRegularFile(installation.browserExecutable) ||
           !Files.isRegularFile(installation.driverExecutable)) {
         return null;
@@ -391,7 +391,7 @@ public final class BrowserInstaller {
     Path driver = resolvedRoot.resolve(grant.artifact.driverExecutable).toAbsolutePath().normalize();
     if (!browser.startsWith(resolvedRoot) ||
         !driver.startsWith(resolvedRoot) ||
-        !browser.getParent().equals(driver.getParent()) ||
+        !runtimePairLayoutMatches(browser, driver, grant.platform) ||
         !Files.isRegularFile(browser) ||
         !Files.isRegularFile(driver)) {
       throw new ArtifactException("Installed browser and project WebDriver layout is invalid", "artifact_layout_invalid");
@@ -401,6 +401,13 @@ public final class BrowserInstaller {
       throw new ArtifactException("Installed browser or project WebDriver hash does not match the signed manifest", "artifact_runtime_hash_mismatch");
     }
     return new RuntimePair(browser, driver);
+  }
+
+  private static boolean runtimePairLayoutMatches(Path browser, Path driver, String platform) {
+    if (browser.getParent().equals(driver.getParent())) return true;
+    return platform.equals("macos") && driver.getFileName().toString().equals("chromedriver") &&
+        browser.toString().equals(driver.getParent().resolve("SlyBrowser.app").resolve("Contents")
+            .resolve("MacOS").resolve("SlyBrowser").toString());
   }
 
   private static LockFile acquireLock(Path path, long timeoutMs) throws IOException {

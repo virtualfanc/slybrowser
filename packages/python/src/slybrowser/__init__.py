@@ -43,4 +43,4 @@ __all__ = [
     "launch_playwright_persistent",
 ]
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"

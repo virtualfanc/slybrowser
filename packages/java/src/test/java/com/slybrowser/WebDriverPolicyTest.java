@@ -15,6 +15,46 @@ import org.openqa.selenium.chrome.ChromeOptions;
 final class WebDriverPolicyTest {
   @TempDir Path temp;
 
+  private static String nativeBrowserName() {
+    String os = System.getProperty("os.name");
+    return os.startsWith("Windows") ? "SlyBrowser.exe"
+        : os.startsWith("Mac") || os.startsWith("Darwin") ? "SlyBrowser" : "chrome";
+  }
+
+  private static String nativeDriverName() {
+    return System.getProperty("os.name").startsWith("Windows") ? "chromedriver.exe" : "chromedriver";
+  }
+
+  @Test
+  void acceptsNativeProjectNamesBeforeValidatingSettings() throws Exception {
+    Path browser = Files.createFile(temp.resolve(nativeBrowserName()));
+    Path driver = Files.createFile(temp.resolve(nativeDriverName()));
+    WebDriverLaunchSettings settings = new WebDriverLaunchSettings();
+    settings.driverStartTimeoutMs = 1;
+    ConfigurationException error = assertThrows(ConfigurationException.class,
+        () -> SlyBrowserWebDriver.launch(browser, driver, "{}", settings));
+    assertEquals("config_invalid", error.getCode());
+  }
+
+  @Test
+  void appliesNativeCasePolicyToBothExecutables() throws Exception {
+    Path browser = Files.createFile(temp.resolve(nativeBrowserName().toUpperCase(java.util.Locale.ROOT)));
+    Path driver = Files.createFile(temp.resolve(nativeDriverName().toUpperCase(java.util.Locale.ROOT)));
+    WebDriverLaunchSettings settings = new WebDriverLaunchSettings();
+    settings.driverStartTimeoutMs = 1;
+    ConfigurationException error = assertThrows(ConfigurationException.class,
+        () -> SlyBrowserWebDriver.launch(browser, driver, "{}", settings));
+    if (System.getProperty("os.name").startsWith("Windows")) {
+      assertEquals("config_invalid", error.getCode());
+    } else {
+      assertEquals("browser_executable_invalid", error.getCode());
+      Path nativeBrowser = Files.writeString(temp.resolve(nativeBrowserName()), "");
+      error = assertThrows(ConfigurationException.class,
+          () -> SlyBrowserWebDriver.launch(nativeBrowser, driver, "{}", settings));
+      assertEquals("driver_executable_invalid", error.getCode());
+    }
+  }
+
   @Test
   void rejectsNonProjectExecutableNamesBeforeStartingAnything() throws Exception {
     Path browser = Files.createFile(temp.resolve("chrome.exe"));
@@ -24,7 +64,7 @@ final class WebDriverPolicyTest {
         () -> SlyBrowserWebDriver.launch(browser, driver, "{}"));
     assertEquals("browser_executable_invalid", browserError.getCode());
 
-    Path slyBrowser = Files.createFile(temp.resolve("SlyBrowser.exe"));
+    Path slyBrowser = Files.createFile(temp.resolve(nativeBrowserName()));
     ConfigurationException driverError = assertThrows(
         ConfigurationException.class,
         () -> SlyBrowserWebDriver.launch(slyBrowser, driver, "{}"));
@@ -68,8 +108,8 @@ final class WebDriverPolicyTest {
 
   @Test
   void rejectsRuntimeHandoffSecretsBeforeStartingProjectWebDriver() throws Exception {
-    Path browser = Files.createFile(temp.resolve("SlyBrowser.exe"));
-    Path driver = Files.createFile(temp.resolve("chromedriver.exe"));
+    Path browser = Files.createFile(temp.resolve(nativeBrowserName()));
+    Path driver = Files.createFile(temp.resolve(nativeDriverName()));
     WebDriverLaunchSettings settings = new WebDriverLaunchSettings();
     settings.runtimeHandoff = Map.of(
         "schemaVersion", 2,

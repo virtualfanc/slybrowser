@@ -28,8 +28,12 @@ public static class SlyBrowserWebDriver
         WebDriverLaunchSettings settings,
         CancellationToken cancellationToken = default)
     {
-        string browser = RequireExecutable(browserExecutable, "SlyBrowser.exe", "browser");
-        string driverPath = RequireExecutable(driverExecutable, "chromedriver.exe", "driver");
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+            throw new ConfigurationException("Unsupported platform", "platform_unsupported");
+        string browser = RequireExecutable(browserExecutable,
+            OperatingSystem.IsWindows() ? "SlyBrowser.exe" : OperatingSystem.IsMacOS() ? "SlyBrowser" : "chrome", "browser");
+        string driverPath = RequireExecutable(driverExecutable,
+            OperatingSystem.IsWindows() ? "chromedriver.exe" : "chromedriver", "driver");
         ValidateSettings(settings);
         string root = Path.GetFullPath(settings.TempRoot ?? Path.GetTempPath());
         Directory.CreateDirectory(root);
@@ -192,7 +196,8 @@ public static class SlyBrowserWebDriver
         string path = Path.GetFullPath(value);
         if (!File.Exists(path))
             throw new ConfigurationException($"{kind} executable does not exist", $"{kind}_missing");
-        if (!string.Equals(Path.GetFileName(path), expectedName, StringComparison.OrdinalIgnoreCase))
+        StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!string.Equals(Path.GetFileName(path), expectedName, comparison))
             throw new ConfigurationException(
                 $"Expected the project {kind} executable named {expectedName}",
                 $"{kind}_executable_invalid");

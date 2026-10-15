@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { inspect7zListingForExtraction, installGrantedBrowser } from "../src/installer.js";
+import { findCurrentBrowserInstallation, inspect7zListingForExtraction, installGrantedBrowser } from "../src/installer.js";
 import { LicenseServiceError } from "../src/errors.js";
 import { LicenseServiceClient, type LicensedSessionGrant } from "../src/service.js";
 
@@ -23,6 +23,48 @@ afterEach(async () => {
 });
 
 describe("browser installer archive extraction", () => {
+  it("installs, discovers, and repairs the signed macOS app-bundle pair", async () => {
+    const browser = "SlyBrowser/SlyBrowser.app/Contents/MacOS/SlyBrowser";
+    const driver = "SlyBrowser/chromedriver";
+    const archive = zipStore([{ name: browser, content: "browser" }, { name: driver, content: "driver" }]);
+    const original = grantForArchive(archive);
+    const grant = { ...original, platform: "macos", arch: "arm64", artifact: { ...original.artifact, browserExecutable: browser, driverExecutable: driver } } as LicensedSessionGrant;
+    const cacheRoot = await mkdtemp(join(tmpdir(), "sly-mac-bundle-"));
+    directories.push(cacheRoot);
+    const client = clientForArchive(archive);
+    const installation = await installGrantedBrowser(client, grant, { cacheRoot });
+    expect(await readFile(installation.browserExecutable, "utf8")).toBe("browser");
+    expect(await findCurrentBrowserInstallation({ cacheRoot, platform: "macos", arch: "arm64" })).toEqual(installation);
+    expect(await installGrantedBrowser(client, grant, { cacheRoot })).toEqual(installation);
+    await writeFile(installation.driverExecutable, "tampered");
+    const repaired = await installGrantedBrowser(client, grant, { cacheRoot });
+    expect(await readFile(repaired.driverExecutable, "utf8")).toBe("driver");
+  });
+
+  it.each([
+    ["linux", "SlyBrowser/SlyBrowser.app/Contents/MacOS/SlyBrowser", "SlyBrowser/chromedriver"],
+    ["macos", "SlyBrowser/Other.app/Contents/MacOS/SlyBrowser", "SlyBrowser/chromedriver"],
+    ["macos", "SlyBrowser/SlyBrowser.app/Contents/MacOS/SlyBrowser", "SlyBrowser/otherdriver"],
+  ])("rejects separated executable layout %s %s %s", async (platform, browser, driver) => {
+    const archive = zipStore([{ name: browser!, content: "browser" }, { name: driver!, content: "driver" }]);
+    const original = grantForArchive(archive);
+    const grant = { ...original, platform, artifact: { ...original.artifact, browserExecutable: browser, driverExecutable: driver } } as LicensedSessionGrant;
+    const cacheRoot = await mkdtemp(join(tmpdir(), "sly-bad-bundle-"));
+    directories.push(cacheRoot);
+    await expect(installGrantedBrowser(clientForArchive(archive), grant, { cacheRoot })).rejects.toMatchObject({ code: "artifact_layout_invalid" });
+  });
+
+  it("retains signed executable hash verification for a macOS app bundle", async () => {
+    const browser = "SlyBrowser/SlyBrowser.app/Contents/MacOS/SlyBrowser";
+    const driver = "SlyBrowser/chromedriver";
+    const archive = zipStore([{ name: browser, content: "tampered" }, { name: driver, content: "driver" }]);
+    const original = grantForArchive(archive);
+    const grant = { ...original, platform: "macos", artifact: { ...original.artifact, browserExecutable: browser, driverExecutable: driver } } as LicensedSessionGrant;
+    const cacheRoot = await mkdtemp(join(tmpdir(), "sly-mac-hash-"));
+    directories.push(cacheRoot);
+    await expect(installGrantedBrowser(clientForArchive(archive), grant, { cacheRoot })).rejects.toMatchObject({ code: "artifact_runtime_hash_mismatch" });
+  });
+
   it("rejects oversized and unsafe 7z entries before extraction", () => {
     const listing = [
       "7-Zip listing",

@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>SlyBrowser</PackageId>
-    <Version>0.3.3</Version>
+    <Version>0.3.4</Version>
     <Authors>SlyBrowser contributors</Authors>
     <Description>.NET SDK for SlyBrowser</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

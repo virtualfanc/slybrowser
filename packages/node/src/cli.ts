@@ -86,7 +86,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     return 2;
   }
   if (command === "--version" || command === "-V") {
-    console.log("0.3.3");
+    console.log("0.3.4");
     return 0;
   }
   if (command === "install") {
@@ -209,7 +209,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
   }
   console.log(JSON.stringify({
-    sdkVersion: "0.3.3",
+    sdkVersion: "0.3.4",
     node: process.version,
     defaultBackend: "project-webdriver",
     browser: browserPath,

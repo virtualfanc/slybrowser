@@ -383,13 +383,20 @@ async function verifyRuntime(root: string, grant: InstallGrant): Promise<{ brows
   const driver = resolve(root, grant.artifact.driverExecutable);
   if (!browser.startsWith(`${resolve(root)}\\`) && !browser.startsWith(`${resolve(root)}/`) ||
       !driver.startsWith(`${resolve(root)}\\`) && !driver.startsWith(`${resolve(root)}/`) ||
-      dirname(browser) !== dirname(driver) || !await exists(browser) || !await exists(driver)) {
+      !runtimePairLayoutMatches(browser, driver, grant.platform) || !await exists(browser) || !await exists(driver)) {
     throw new ArtifactError("Installed browser and project WebDriver layout is invalid", "artifact_layout_invalid");
   }
   if (await sha256(browser) !== grant.artifact.browserSha256 || await sha256(driver) !== grant.artifact.driverSha256) {
     throw new ArtifactError("Installed browser or project WebDriver hash does not match the signed manifest", "artifact_runtime_hash_mismatch");
   }
   return { browser, driver };
+}
+
+function runtimePairLayoutMatches(browser: string, driver: string, platform: string): boolean {
+  if (dirname(browser) === dirname(driver)) return true;
+  const driverDirectory = dirname(driver);
+  return platform === "macos" && driver === join(driverDirectory, "chromedriver") &&
+    browser === join(driverDirectory, "SlyBrowser.app", "Contents", "MacOS", "SlyBrowser");
 }
 
 async function acquireLock(path: string, timeoutMs: number): Promise<() => Promise<void>> {
@@ -435,7 +442,7 @@ async function readLooseInstallation(path: string, options: Required<Omit<Curren
     const driver = resolve(document.driverExecutable);
     if (!browser.startsWith(`${root}\\`) && !browser.startsWith(`${root}/`) ||
         !driver.startsWith(`${root}\\`) && !driver.startsWith(`${root}/`) ||
-        dirname(browser) !== dirname(driver) || !await exists(browser) || !await exists(driver)) {
+        !runtimePairLayoutMatches(browser, driver, options.platform) || !await exists(browser) || !await exists(driver)) {
       return null;
     }
     return { ...document, root, browserExecutable: browser, driverExecutable: driver };

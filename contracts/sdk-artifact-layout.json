@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "scope": "Verified Browser and project Driver installation and cache layouts in all four SDKs",
+  "layouts": {
+    "flat": {
+      "platforms": ["windows", "linux", "macos"],
+      "browserAndDriverShareParent": true
+    },
+    "macosAppBundle": {
+      "platform": "macos",
+      "browserRelativeToDriverDirectory": "SlyBrowser.app/Contents/MacOS/SlyBrowser",
+      "driverFileName": "chromedriver",
+      "caseSensitive": true
+    }
+  },
+  "required": [
+    "Both executable paths remain within the installation root.",
+    "Both executables are regular files at the exact signed manifest paths.",
+    "The signed archive size and SHA-256 and both executable SHA-256 values match before use.",
+    "Reject other separated-directory layouts and unsafe archive paths or links.",
+    "Apply the same layout rules to new installations and existing cache discovery."
+  ]
+}

@@ -45,8 +45,16 @@ public final class SlyBrowserWebDriver {
       Path driverExecutable,
       String licenseEnvelope,
       WebDriverLaunchSettings settings) {
-    Path browser = requireExecutable(browserExecutable, "SlyBrowser.exe", "browser");
-    Path driverPath = requireExecutable(driverExecutable, "chromedriver.exe", "driver");
+    String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+    boolean windows = os.startsWith("windows");
+    boolean macos = os.startsWith("mac") || os.startsWith("darwin");
+    if (!windows && !macos && !os.startsWith("linux")) {
+      throw new ConfigurationException("Unsupported platform", "platform_unsupported");
+    }
+    Path browser = requireExecutable(browserExecutable,
+        windows ? "SlyBrowser.exe" : macos ? "SlyBrowser" : "chrome", "browser");
+    Path driverPath = requireExecutable(driverExecutable,
+        windows ? "chromedriver.exe" : "chromedriver", "driver");
     validateSettings(settings);
     Path releaseRoot = settings.releaseRoot == null
         ? releaseRootFromLease(browser, licenseEnvelope)
@@ -229,7 +237,10 @@ public final class SlyBrowserWebDriver {
     if (!Files.isRegularFile(path)) {
       throw new ConfigurationException(kind + " executable does not exist", kind + "_missing");
     }
-    if (!path.getFileName().toString().equalsIgnoreCase(expectedName)) {
+    String actualName = path.getFileName().toString();
+    boolean matches = System.getProperty("os.name", "").startsWith("Windows")
+        ? actualName.equalsIgnoreCase(expectedName) : actualName.equals(expectedName);
+    if (!matches) {
       throw new ConfigurationException(
           "Expected the project " + kind + " executable named " + expectedName,
           kind + "_executable_invalid");

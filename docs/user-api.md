@@ -1,6 +1,6 @@
 # SDK user API
 
-SlyBrowser 0.3.1 has one launch contract across Node.js, Python, Java, and .NET.
+SlyBrowser 0.3.4 has one launch contract across Node.js, Python, Java, and .NET.
 The application supplies an authorization file and may set `profile`, `launch`, and
 `humanize` options. No import command is required.
 
@@ -8,14 +8,19 @@ The application supplies an authorization file and may set `profile`, `launch`, 
 
 | Language | Package |
 | --- | --- |
-| Node.js | `npm install slybrowser@0.3.1` |
-| Python | `pip install slybrowser==0.3.1` |
-| Java | `com.slybrowser:slybrowser:0.3.1` |
-| .NET | `dotnet add package SlyBrowser --version 0.3.1` |
+| Node.js | `npm install slybrowser@0.3.4` |
+| Python | `pip install slybrowser==0.3.4` |
+| Java | `com.slybrowser:slybrowser:0.3.4` |
+| .NET | `dotnet add package SlyBrowser --version 0.3.4` |
 
 The SDK packages do not embed Browser binaries. The selected SDK downloads the exact
 authorized Browser and matching Sly WebDriver after it validates the authorization
 file and signed release metadata.
+
+Project WebDriver uses `SlyBrowser.exe` and `chromedriver.exe` on Windows,
+`chrome` and `chromedriver` on Linux, and `SlyBrowser` and `chromedriver` on macOS.
+These names describe the signed project distribution; the SDK verifies the release
+Manifest and exact Browser/Driver hashes before launch.
 
 The SDK selects, verifies, and starts the matching SlyBrowser and Sly WebDriver
 release. Runtime locations, verification material, release downloads, temporary

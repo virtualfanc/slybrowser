@@ -448,7 +448,7 @@ public static class BrowserInstaller
             string root = Path.GetFullPath(path);
             if (!browser.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
                 !driver.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-                Path.GetDirectoryName(browser) != Path.GetDirectoryName(driver) ||
+                !RuntimePairLayoutMatches(browser, driver, platform) ||
                 !File.Exists(browser) ||
                 !File.Exists(driver))
                 return null;
@@ -720,7 +720,7 @@ public static class BrowserInstaller
         string driver = Path.GetFullPath(Path.Combine(root, grant.Artifact.DriverExecutable));
         if (!browser.StartsWith(resolvedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
             !driver.StartsWith(resolvedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-            Path.GetDirectoryName(browser) != Path.GetDirectoryName(driver) ||
+            !RuntimePairLayoutMatches(browser, driver, grant.Platform) ||
             !File.Exists(browser) ||
             !File.Exists(driver))
             throw new ArtifactException("Installed browser and project WebDriver layout is invalid", "artifact_layout_invalid");
@@ -728,6 +728,13 @@ public static class BrowserInstaller
             await Sha256Async(driver, cancellationToken) != grant.Artifact.DriverSha256)
             throw new ArtifactException("Installed browser or project WebDriver hash does not match the signed manifest", "artifact_runtime_hash_mismatch");
         return (browser, driver);
+    }
+
+    private static bool RuntimePairLayoutMatches(string browser, string driver, string platform)
+    {
+        if (Path.GetDirectoryName(browser) == Path.GetDirectoryName(driver)) return true;
+        return platform == "macos" && Path.GetFileName(driver) == "chromedriver" &&
+            string.Equals(browser, Path.Combine(Path.GetDirectoryName(driver)!, "SlyBrowser.app", "Contents", "MacOS", "SlyBrowser"), StringComparison.Ordinal);
     }
 
     private static string CurrentPlatform()

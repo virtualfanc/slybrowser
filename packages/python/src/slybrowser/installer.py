@@ -105,6 +105,16 @@ def _matches_kernel_major(version: str, kernel_major: int | str) -> bool:
     return kernel_major == "latest" or int(version.split(".")[0]) == kernel_major
 
 
+def _runtime_pair_layout_matches(browser: Path, driver: Path, platform: str) -> bool:
+    if browser.parent == driver.parent:
+        return True
+    return (
+        platform == "macos"
+        and driver.name == "chromedriver"
+        and browser.as_posix() == (driver.parent / "SlyBrowser.app" / "Contents" / "MacOS" / "SlyBrowser").as_posix()
+    )
+
+
 def _verify_runtime(root: Path, grant: InstallGrant) -> tuple[Path, Path]:
     browser = (root / grant.artifact.browserExecutable).resolve()
     driver = (root / grant.artifact.driverExecutable).resolve()
@@ -114,7 +124,7 @@ def _verify_runtime(root: Path, grant: InstallGrant) -> tuple[Path, Path]:
         driver.relative_to(resolved_root)
     except ValueError as error:
         raise ArtifactError("Installed runtime path escapes its root", code="artifact_layout_invalid") from error
-    if browser.parent != driver.parent or not browser.is_file() or not driver.is_file():
+    if not _runtime_pair_layout_matches(browser, driver, grant.platform) or not browser.is_file() or not driver.is_file():
         raise ArtifactError("Installed browser and project WebDriver layout is invalid", code="artifact_layout_invalid")
     if _file_sha256(browser) != grant.artifact.browserSha256 or _file_sha256(driver) != grant.artifact.driverSha256:
         raise ArtifactError(
@@ -314,7 +324,7 @@ def _read_loose_installation(root: Path, *, platform: str, arch: str, kernel_maj
         driver = installation.driver_executable.resolve()
         browser.relative_to(root.resolve())
         driver.relative_to(root.resolve())
-        if browser.parent != driver.parent or not browser.is_file() or not driver.is_file():
+        if not _runtime_pair_layout_matches(browser, driver, platform) or not browser.is_file() or not driver.is_file():
             return None
         return BrowserInstallation(
             installation.version,

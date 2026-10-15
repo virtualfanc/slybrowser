@@ -4,6 +4,62 @@ namespace SlyBrowser.Tests;
 
 public sealed class WebDriverPolicyTests
 {
+    private static string NativeBrowserName => OperatingSystem.IsWindows() ? "SlyBrowser.exe"
+        : OperatingSystem.IsMacOS() ? "SlyBrowser" : "chrome";
+    private static string NativeDriverName => OperatingSystem.IsWindows() ? "chromedriver.exe" : "chromedriver";
+
+    [Fact]
+    public async Task AcceptsNativeProjectNamesBeforeValidatingSettings()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"sly-dotnet-native-names-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string browser = Path.Combine(root, NativeBrowserName);
+            string driver = Path.Combine(root, NativeDriverName);
+            await File.WriteAllTextAsync(browser, string.Empty, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(driver, string.Empty, TestContext.Current.CancellationToken);
+            WebDriverLaunchSettings settings = new() { DriverStartTimeout = TimeSpan.FromMilliseconds(1) };
+            ConfigurationException error = await Assert.ThrowsAsync<ConfigurationException>(
+                () => SlyBrowserWebDriver.LaunchAsync(browser, driver, "{}", settings, TestContext.Current.CancellationToken));
+            Assert.Equal("config_invalid", error.Code);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+    [Fact]
+    public async Task AppliesNativeCasePolicyToBothExecutables()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"sly-dotnet-native-case-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string browser = Path.Combine(root, NativeBrowserName.ToUpperInvariant());
+            string driver = Path.Combine(root, NativeDriverName.ToUpperInvariant());
+            await File.WriteAllTextAsync(browser, string.Empty, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(driver, string.Empty, TestContext.Current.CancellationToken);
+            WebDriverLaunchSettings settings = new() { DriverStartTimeout = TimeSpan.FromMilliseconds(1) };
+            ConfigurationException error = await Assert.ThrowsAsync<ConfigurationException>(
+                () => SlyBrowserWebDriver.LaunchAsync(browser, driver, "{}", settings, TestContext.Current.CancellationToken));
+            if (OperatingSystem.IsWindows()) Assert.Equal("config_invalid", error.Code);
+            else
+            {
+                Assert.Equal("browser_executable_invalid", error.Code);
+                string nativeBrowser = Path.Combine(root, NativeBrowserName);
+                await File.WriteAllTextAsync(nativeBrowser, string.Empty, TestContext.Current.CancellationToken);
+                error = await Assert.ThrowsAsync<ConfigurationException>(
+                    () => SlyBrowserWebDriver.LaunchAsync(nativeBrowser, driver, "{}", settings, TestContext.Current.CancellationToken));
+                Assert.Equal("driver_executable_invalid", error.Code);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task RejectsNonProjectExecutableNamesBeforeStartingAnything()
     {
@@ -19,7 +75,7 @@ public sealed class WebDriverPolicyTests
                 () => SlyBrowserWebDriver.LaunchAsync(browser, driver, "{}", TestContext.Current.CancellationToken));
             Assert.Equal("browser_executable_invalid", browserError.Code);
 
-            string slyBrowser = Path.Combine(root, "SlyBrowser.exe");
+            string slyBrowser = Path.Combine(root, NativeBrowserName);
             await File.WriteAllTextAsync(slyBrowser, string.Empty, TestContext.Current.CancellationToken);
             ConfigurationException driverError = await Assert.ThrowsAsync<ConfigurationException>(
                 () => SlyBrowserWebDriver.LaunchAsync(slyBrowser, driver, "{}", TestContext.Current.CancellationToken));
@@ -74,8 +130,8 @@ public sealed class WebDriverPolicyTests
         Directory.CreateDirectory(root);
         try
         {
-            string browser = Path.Combine(root, "SlyBrowser.exe");
-            string driver = Path.Combine(root, "chromedriver.exe");
+            string browser = Path.Combine(root, NativeBrowserName);
+            string driver = Path.Combine(root, NativeDriverName);
             await File.WriteAllTextAsync(browser, string.Empty, TestContext.Current.CancellationToken);
             await File.WriteAllTextAsync(driver, string.Empty, TestContext.Current.CancellationToken);
             WebDriverLaunchSettings settings = new()

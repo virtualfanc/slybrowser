@@ -1,6 +1,11 @@
 {
   "schemaVersion": 1,
   "lastVerified": "2026-08-25",
+  "projectWebDriverExecutables": {
+    "windows": { "browser": "SlyBrowser.exe", "driver": "chromedriver.exe", "caseSensitive": false },
+    "linux": { "browser": "chrome", "driver": "chromedriver", "caseSensitive": true },
+    "macos": { "browser": "SlyBrowser", "driver": "chromedriver", "caseSensitive": true }
+  },
   "browserRuntime": {
     "supported": [
       {
