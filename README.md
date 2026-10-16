@@ -4,7 +4,7 @@
 
 <h1 align="center">SlyBrowser</h1>
 
-<p align="center"><strong>Native Chromium profiles for reliable browser automation.</strong></p>
+<p align="center"><strong>Anti-detect Chromium for browser automation with Native Humanize.</strong></p>
 
 <p align="center">
   <a href="LICENSE"><img alt="SDK license: MIT" src="https://img.shields.io/badge/SDK%20license-MIT-5577FF"></a>
@@ -13,312 +13,209 @@
 </p>
 
 <p align="center">
-  <a href="https://slybrowser.com/free-license"><strong>Claim a Free license</strong></a><br>
-  Receive a long-term Free license certificate by email for one concurrent browser process, with no trial expiry.<br>
-  It does not renew automatically and can be claimed once per email.
+  <a href="https://slybrowser.com/free-license"><strong>Get a Free license</strong></a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/user-api.md">SDK API</a> ·
+  <a href="docs/support-matrix.md">Support matrix</a>
 </p>
 
-SlyBrowser is a Chromium-based browser distribution and multi-language SDK for
-launching isolated, reproducible browser profiles from automation frameworks. Profile
-settings are applied in the native browser layer so the browser, renderer, workers,
-iframes, and supported runtime surfaces share one configuration.
+SlyBrowser is a Chromium-based anti-detect browser for authorized browser automation,
+testing and permitted web scraping. Use Python, Node.js, Java or .NET to launch
+isolated browser profiles with persistent or clean state.
 
-## Install an SDK
+- **Native Humanize.** Mouse, keyboard and scrolling behavior executes in Sly
+  WebDriver; SDKs expose the same interaction contract across four languages.
+- **Native browser profiles.** Apply supported settings in the browser layer so
+  pages, iframes and workers share one configuration.
+- **Verified startup.** The SDK downloads the authorized Browser and exact matching
+  Sly WebDriver, checks signatures and SHA-256 hashes, and starts the pair.
 
-SlyBrowser 0.3.4 exposes one launch contract in four language packages. Python archive downloads support bounded recovery from truncated responses while retaining signed size and SHA-256 verification. The npm page
-documents the Node.js package; use the matching registry for other languages.
+Free has no trial expiry and allows one concurrent browser process. It still
+requires a valid authorization file and online authorization.
+
+## Quick start
+
+### Get your authorization file
+
+1. Visit the [Free license page](https://slybrowser.com/free-license) and enter the
+   email address that should receive your authorization file. Free can be claimed
+   once per email and does not renew automatically.
+2. Save the emailed file locally. The examples use `account.authorization.json` in
+   the script's working directory; substitute the actual filename or path.
+
+Treat this file as a credential. Keep it out of source control. Free remains subject
+to signature, online authorization, revocation and concurrency checks.
+
+### Install an SDK
+
+Install the latest compatible SDK from the matching package registry.
 
 | Language | Install |
 | --- | --- |
-| Node.js | `npm install slybrowser@0.3.4` |
-| Python | `pip install slybrowser==0.3.4` |
-| Java | Maven coordinate `com.slybrowser:slybrowser:0.3.4` |
-| .NET | `dotnet add package SlyBrowser --version 0.3.4` |
+| Node.js | `npm install slybrowser@latest` |
+| Python | `python -m pip install --upgrade slybrowser` |
+| Java | [SlyBrowser on Maven Central](https://central.sonatype.com/artifact/com.slybrowser/slybrowser) |
+| .NET | `dotnet add package SlyBrowser` |
 
-Each SDK downloads and verifies the authorized Browser and matched Sly WebDriver on
-first launch. Browser binaries are not embedded in the SDK package.
+For Java, copy the current dependency declaration from Maven Central. Keep the
+resolved SDK version in your project's dependency or lock file for reproducible builds.
+See the [runtime and platform requirements](docs/support-matrix.md) before starting.
 
-## Selected passing evidence over stock Chromium
+### Run your first browser
 
-The saved headed comparison used the same Windows x64 host, network and time window.
-SlyBrowser ran through the public Node package, its exact matched project WebDriver,
-Native Humanize in `careful` mode and the benchmark profile; the stock Chromium baseline
-ran through Playwright. The public summary below intentionally highlights successful
-checks and category wins only. The saved evidence records SlyBrowser/WebDriver
-`148.0.7778.179` and stock Chromium `153.0.8003.0`.
-
-| Metric | SlyBrowser | Stock Chromium | Measured advantage |
-| --- | ---: | ---: | ---: |
-| Coverage-adjusted score | **80.01** | 71.11 | **+8.90** |
-| Raw measured score | **88.74** | 78.86 | **+9.88** |
-| Core automation signals | **100.00** | 80.00 | **+20.00** |
-| Bot-detection checks | **82.30** | 73.26 | **+9.04** |
-| Page / iframe / worker consistency | **100.00** | 94.44 | **+5.56** |
-| Device & Browser Info interaction | **100.00** | 69.23 | **+30.77** |
-| Interaction score | **92.31** | 69.23 | **+23.08** |
-
-The release gate now requires Node.js, Python, Java and .NET Native Humanize
-Page/Frame/Element/DPI scores to meet or exceed the Node.js SDK baseline before
-refreshing the public comparison. See the
-[selected dated passing evidence](docs/benchmark-latest.md).
-
-> [!IMPORTANT]
-> This repository is governed for public disclosure, while the product distribution
-> remains in private preview. Treat every tracked file and commit-metadata field as
-> publicly disclosed even when remote visibility has not been independently verified.
-> Package names, APIs, download endpoints, and binary license terms may change before
-> the first public preview.
-
-## Intended capabilities
-
-- Project-built W3C WebDriver as the default JavaScript, Python, Java and .NET
-  backend.
-- Playwright as an explicit optional adapter for Node.js/TypeScript, Python,
-  Java and .NET; Puppeteer as an explicit optional Node.js/TypeScript adapter.
-- Persistent and ephemeral user-data directories.
-- A first-release native profile contract covering identity, locale, timezone,
-  screen, graphics, audio, device, storage, browser-policy, and startup inputs.
-- First-release launch helpers explicitly reject proxy routing, proxy alignment,
-  GEO/geolocation, and WebRTC proxy/replace modes with
-  `launch_feature_unsupported`.
-- Signed browser release manifests with SHA-256 artifact verification.
-- Short-lived, signed license leases with explicit feature and session limits.
-- Python, Node.js, Java and .NET SDKs backed by shared JSON contracts and a
-  machine-readable framework compatibility matrix.
-- Deterministic build, packaging, smoke-test, and test-page automation.
-
-## Source and license boundary
-
-SlyBrowser deliberately separates its public SDK from its browser implementation:
-
-| Deliverable | Location | License |
-| --- | --- | --- |
-| SDKs, schemas, scripts, tests, and documentation | This repository | [MIT](LICENSE), except where noted |
-| SlyBrowser name and logo | `assets/brand` | Reserved trademark/brand assets |
-| Modified Chromium C++ source | Private source checkout | Not published by this repository |
-| Distributed SlyBrowser browser binary | Release channel | Release-specific proprietary binary license plus applicable open-source licenses |
-| Chromium and bundled third-party components | Browser source/binary | Their respective upstream licenses and notices |
-
-Read [LICENSE-SCOPE.md](LICENSE-SCOPE.md) and
-[legal/BINARY-LICENSE.md](legal/BINARY-LICENSE.md) before redistributing any
-deliverable. Official browser release packages must include `BINARY-LICENSE.txt`,
-`LICENSE-SCOPE.txt`, `THIRD_PARTY_NOTICES.txt`, and `CREDITS.html`; release automation
-rejects packages that omit those legal artifacts. The commercial binary terms cannot
-remove rights independently granted by Chromium or any third-party component.
-
-## Repository layout
-
-```text
-assets/brand/       Approved icon and brand files
-contracts/          Shared launch and signed-release schemas
-docs/               Architecture, licensing, and release design
-docs/wiki/          Version-controlled source for the public GitHub Wiki
-packages/python/    Python SDK and CLI (project WebDriver default)
-packages/node/      TypeScript SDK (project WebDriver default)
-packages/java/      Java SDK and Playwright adapter
-packages/dotnet/    .NET SDK and Playwright adapter
-scripts/            Build, packaging, signing, and verification entry points
-tests/              Contract, integration, and browser test-page suites
-```
-
-Entitlement, billing, authorization, and website service implementations are maintained
-outside this public SDK repository. Public clients integrate only through the documented
-contracts and service interfaces.
-
-The modified Chromium checkout and signing private keys must never be copied into this
-repository. Browser packages are attached to releases only after license scanning,
-testing, hashing, and manifest signing.
-
-## Technical documentation
-
-Start with the [SDK user API](docs/user-api.md) for the four-language launch contract
-and the version-controlled [SlyBrowser Wiki source](docs/wiki/Home.md) for the
-feature-oriented installation, configuration, API, error, limitation, and platform
-guides. The remote GitHub Wiki is a publication target, not a second source of truth;
-local source preparation does not mean remote publication has occurred.
-
-Contributor-facing exact-candidate security, documentation, four-binding,
-Red → Green → Refactor, and cumulative eligibility contracts are documented in
-[the public delivery gate contracts](contracts/delivery/README.md). A passing local
-receipt establishes eligibility only and never authorizes a commit, push, publication,
-deployment, or release.
-The security plan fixes seven checks to one exact Git-index candidate: staged diff,
-repository disclosure guard, type checking, lint, SAST, dependency vulnerability, and
-dependency-license inventory. Each runner writes candidate-bound raw evidence; only a
-separate receipt builder that verifies the raw evidence, candidate, command, tool, and
-canonical scanner plan can turn that output into an accepted scanner receipt. Receipt
-eligibility never grants commit, push, deployment, publication, or release authority.
-Repository-history replacement has an additional fail-closed audit that scans all
-reachable refs, commits, paths, blobs and commit metadata. A deletion commit does not
-erase an earlier private blob and is never accepted as history sanitization.
-
-## Default project WebDriver
-
-SlyBrowser 0.3.4 exposes the same entry point in Node.js, Python, Java, and .NET. Pass
-the authorization file and optionally set `profile`, `launch`, and `humanize`. No
-import command is required. The SDK selects and verifies the matching SlyBrowser and
-Sly WebDriver release; it never falls back to a system browser or driver.
-
-```ts
-import { launch } from "slybrowser";
-
-await using browser = await launch("account.authorization.json", {
-  profile: { locale: "en-US", languages: ["en-US", "en"] },
-  launch: { headless: true },
-  humanize: { enabled: true, preset: "careful" },
-});
-await browser.get("https://example.test");
-await (await browser.findElement("input[name=q]")).type("SlyBrowser");
-```
+Python (save as `quickstart.py`):
 
 ```python
 from slybrowser import launch
 
-with launch(
-    "account.authorization.json",
-    {
-        "profile": {"locale": "en-US", "languages": ["en-US", "en"]},
-        "launch": {"headless": True},
-        "humanize": {"enabled": True, "preset": "careful"},
-    },
-) as browser:
-    browser.get("https://example.test")
-    browser.find_element("input[name=q]").type("SlyBrowser")
+with launch("account.authorization.json", {
+    "launch": {"headless": False},
+    "humanize": {"enabled": True},
+}) as browser:
+    browser.get("https://example.com")
 ```
 
-Playwright adapters are available in all four bindings; Node.js also provides a
-Puppeteer adapter. The package detects the installed binding and keeps release and
-pairing details internal. See the [complete SDK user API](docs/user-api.md) for all
-fields, defaults, and four-language examples.
+Node.js (save as `quickstart.mjs`):
 
-## Authorized latest release
+```js
+import { launch } from "slybrowser";
 
-The SDKs validate the authorization file, reserve one browser-process concurrency
-slot, select a server-approved Stable release, verify its archive, and launch the exact
-project WebDriver pair.
-Paid entitlements can use the newest compatible paid package. A natively issued Free
-license uses the server-controlled Free window, which defaults to the newest
-compatible Stable package. An expired paid key is rejected with
-`license_plan_expired`; it is never silently converted to Free. Every authorized
-runtime stops if the selected, downloaded, and launched versions do not match. Cached
-runtime files are checked again before every load.
+const browser = await launch("account.authorization.json", {
+  launch: { headless: false },
+  humanize: { enabled: true },
+});
+try {
+  await browser.get("https://example.com");
+} finally {
+  await browser.close();
+}
+```
 
-The customer-held authorization file is an account credential. Payment, renewal,
-cancellation, downgrade, and refund do not require an application-side conversion
-step. The service resolves the effective plan, release window, feature set, and
-concurrency limit on every launch.
+Run the Python script with `python quickstart.py`, or the Node.js example with
+`node quickstart.mjs`. Each example opens the page in a visible browser, then closes
+its session and releases its concurrency slot. Humanize is enabled for subsequent
+mouse, keyboard and scrolling actions; opening a page alone does not exercise them.
 
-For support, Node.js and Python CLIs expose a read-only diagnostic command:
+On first launch, the SDK validates your authorization, selects an allowed release,
+and downloads the Browser and matched Sly WebDriver for your platform. Browser
+binaries are not embedded in the SDK package. Launch requires a signed,
+catalog-published artifact for that exact platform and architecture. Verification
+or pairing failure stops startup, with no fallback to system Chrome or a system Driver.
+
+For more fields and all four language examples, see the
+[SDK user API](docs/user-api.md). To troubleshoot authorization or release selection:
 
 ```text
 slybrowser license info --authorization account.authorization.json
 ```
 
-It prints redacted plan, concurrency, paid-through, selected release, update status and
-`stableErrorCode` fields only. It does not print license keys, runtime tokens, download
-tickets, emails, payment identifiers, profile paths or service access URLs.
+The Node.js and Python diagnostic command reports redacted plan, concurrency,
+selected release and error information. It does not print license keys or tokens.
 
-```ts
-import { launch } from "slybrowser";
+## Recorded test results
 
-await using browser = await launch("account.authorization.json", {
-  humanize: { enabled: true },
-});
-```
+The [dated benchmark summary](docs/benchmark-latest.md) records selected passing
+checks from 2026-08-16. The saved comparison used SlyBrowser/WebDriver
+`148.0.7778.179` and stock Chromium `153.0.8003.0` on the same Windows x64 host,
+network and time window. SlyBrowser used its matched WebDriver with Native Humanize;
+the baseline used Playwright. The automation paths differed.
 
-The enforced monthly plan matrix is Free $0 / 1 process, Basic $18 / 5, Pro $48 /
-20, Max $188 / 200 and Ultra $468 / 2,000. The complete signing, authorization,
-deployment and rotation procedure is in
-[Authorized browser delivery](docs/authorized-release-service.md).
+| Selected check | SlyBrowser | Stock Chromium |
+| --- | ---: | ---: |
+| Core automation signals | 100/100 | 80/100 |
+| Page, frame and worker consistency | 100/100 | 94.44/100 |
+| Device & Browser Info interaction | 100/100 | 69.23/100 |
 
-Current browser and symbol releases use `.7z` archives with matching checksum sidecars.
-The SDK manages extraction as part of the verified launch flow.
+These are historical results for the recorded configuration, not a guarantee that
+every website or protection service will accept a session. Only selected passing
+checks are shown; this is not a new test of the current release or a comparison
+with another anti-detect product.
 
-Runtime leases default to a 1500-second TTL with a 120-second heartbeat interval.
-Native browser/WebDriver watchdogs exit after a hard authorization denial, or after
-10 consecutive transient heartbeat failures while still respecting the signed lease
-expiry.
+## Frameworks and profiles
 
-## Humanized interaction
+| Path | Available bindings | Start here |
+| --- | --- | --- |
+| Sly WebDriver (default) | Node.js, Python, Java, .NET | [Shared launch API](docs/user-api.md) |
+| Playwright (explicit adapter) | Node.js, Python, Java, .NET | [Compatibility matrix](contracts/automation-backends.json) |
+| Puppeteer (explicit adapter) | Node.js/TypeScript | [Node.js SDK](packages/node/README.md) |
 
-The default WebDriver backend implements Humanize natively inside Sly WebDriver. It
-uses trusted mouse and keyboard input, curved non-center pointer paths, variable key
-timing, click holds, and short thinking pauses:
+The default `launch` entry point starts Sly WebDriver. Choose a framework adapter
+explicitly and follow its documented API; existing Playwright or Puppeteer code may
+need changes. There is no implicit backend switch.
 
-```ts
-import { launch } from "slybrowser";
+Use `launch.profileMode` and `launch.profileDirectory` to select persistent or
+clean profiles. Supported identity, locale, timezone, graphics, audio and other
+settings are documented in [Native profile configuration](docs/profile-configuration.md).
+Unknown fields and unsupported settings are rejected.
 
-const browser = await launch("account.authorization.json", {
-  humanize: {
-    enabled: true,
-    preset: "careful",
-    seed: 42424, // omit outside reproducible tests
-  },
-});
-```
+Native Humanize stays in Sly WebDriver. See
+[Humanize and runtime pairing](docs/webdriver-humanize-and-pairing.md) for supported
+interaction behavior, presets and framework boundaries. Use `humanize.seed` only for
+repeatable tests; omit it in normal use.
 
-`humanize.seed` exists for repeatable regression tests. Production sessions should
-omit it. Adapters do not silently replace native Humanize with a language-local
-algorithm; unsupported browser builds fail closed. The native WebDriver capability
-and production browser/driver validation model are documented in
-[Native WebDriver Humanize and runtime pairing](docs/webdriver-humanize-and-pairing.md).
+## Current support boundaries
 
-## Development status
+SlyBrowser remains in private preview. Package names, APIs, download endpoints and
+binary license terms may change before public preview.
 
-The shared contracts and Python, Node.js, Java and .NET SDK source are present. Latest
-local source-level verification on 2026-09-01: Node.js SDK 66 passed, Python SDK 60
-passed, Java SDK 27 passed with 2 runtime-only cases skipped, and .NET SDK 30 passed.
-The skipped Java runtime cases remain `not_evaluated`; these local results do not
-replace real packaged Browser/Driver or three-platform release evidence. The four-language
-Native Humanize score parity gate is implemented and blocks any non-Node SDK that
-scores below Node before refreshed runtime scores are published. Windows, Linux and
-macOS x64/arm64 are the release matrix; 32-bit x86 packages are not offered. Public
-download still depends on a signed, catalog-published artifact for the exact tuple.
-The supported native settings and explicit gaps are
-listed in
-[Native profile configuration](docs/profile-configuration.md).
+- **Platforms:** consult the [support matrix](docs/support-matrix.md) for each
+  target's status. SDK portability does not establish Browser/Driver availability;
+  signed artifacts and release qualification are required for each exact tuple.
+  32-bit x86 is unsupported.
+- **Networking:** current first-release launch helpers use direct networking and
+  reject proxy routing, proxy alignment, GEO/geolocation and WebRTC proxy/replace
+  modes with `launch_feature_unsupported`.
+- **Verification:** a missing or mismatched Browser/Driver, invalid signature,
+  unavailable release, authorization denial or exceeded concurrency limit stops
+  the operation. Unsupported configuration never silently falls back to another
+  browser, driver, platform or network route.
 
-The public benchmark summary records selected successful evidence in
-[the latest public comparison](docs/benchmark-latest.md). This is development evidence,
-not a claim that every website or protection service will accept a session.
+## Licensing and authorization
 
-Internal commercial research, payment-service implementation and launch-readiness
-planning are maintained outside this public SDK repository. Public package names,
-prices, features and concurrency limits come only from
-[`contracts/plans.json`](contracts/plans.json). Production checkout remains gated by
-approved legal terms and a deployed payment webhook.
+Free is perpetual with one concurrent browser process and no trial expiry. Its
+certificate still participates in signature, online authorization, revocation and
+concurrency checks. Older time-limited Free certificates can be replaced through
+the official claim page using the original email; revoked licenses cannot be
+restored through that flow.
 
-Native browser launch targets are Windows x64/arm64, Linux x64/arm64/Docker and macOS
-x64/arm64. Windows x86 and Linux x86 packages have been removed from SDK selection,
-release manifests and private build orchestration.
-Each target is published only after its signed browser/WebDriver artifact, manifest
-hashes and smoke qualification pass. Node.js, Python, Java and
-.NET SDK contracts have cross-platform CI matrices. See the
-[supported platform and runtime matrix](docs/support-matrix.md).
+For a paid subscription, enter and confirm the delivery address at the
+[official website](https://slybrowser.com/#pricing). The authorization file is sent
+to the confirmed email only after payment is verified. A payment return page alone
+does not grant access. An expired paid key returns `license_plan_expired` rather
+than silently becoming Free. The service resolves the effective plan, allowed
+release window and concurrency limit at launch and during runtime checks.
 
-Commercial policy drafts are tracked in [docs/legal-policies.md](docs/legal-policies.md):
-Free can be used long term, Max/Ultra are self-serve, paid renewal has no grace
-period, and completed full refunds immediately end the paid entitlement. The local
-license file is an account credential; plan, concurrency and release-version access
-are resolved by the server at launch/heartbeat time. Unexpired Free accounts receive
-the configured Free release window, which defaults to the latest Stable package.
-Expired paid accounts return `license_plan_expired` and receive no package.
+Prices and capacities are defined in [plans.json](contracts/plans.json). See
+[licensing](docs/licensing.md) and [commercial policies](docs/legal-policies.md) for
+details.
 
-The benchmark can run through Playwright, Node.js/TypeScript Puppeteer, or the
-project's explicitly selected, self-built W3C WebDriver. The strongest comparison
-script records SlyBrowser and stock results for both framework bindings, while native
-Humanize remains on the WebDriver run until a shared native control plane is available.
-Setup and evidence rules are in
-[Detection benchmark](docs/detection-benchmark.md).
+SDK code is MIT licensed. The browser implementation is private; distributed
+binaries have a separate binary license and applicable open-source notices.
+Brand assets retain their trademark restrictions. Read
+[LICENSE-SCOPE.md](LICENSE-SCOPE.md), [BINARY-LICENSE.md](legal/BINARY-LICENSE.md)
+and [LICENSE](LICENSE) before redistribution. Chromium and bundled third-party
+components retain their own licenses and notices.
 
-## Responsible use
+## Documentation
+
+- [SDK API and four-language examples](docs/user-api.md)
+- [Node.js](packages/node/README.md), [Python](packages/python/README.md),
+  [Java](packages/java/README.md) and [.NET](packages/dotnet/README.md)
+- [Installation, configuration and troubleshooting](docs/wiki/Home.md)
+- [Platform and runtime support](docs/support-matrix.md)
+- [Native profile configuration](docs/profile-configuration.md)
+- [Native Humanize and runtime pairing](docs/webdriver-humanize-and-pairing.md)
+- [Authorization and signed release delivery](docs/authorized-release-service.md)
+- [Dated benchmark summary](docs/benchmark-latest.md)
+- [Contribution and delivery contracts](contracts/delivery/README.md)
 
 Use SlyBrowser only on systems and websites you own or are authorized to automate.
-Credential attacks, unauthorized access, fraud, and evasion of access controls are not
-supported. See [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+Credential attacks, unauthorized access, fraud and evasion of access controls are
+not supported. Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
-## Independence notice
+If SlyBrowser is useful to you, consider starring the repository or following
+[releases](https://github.com/virtualfanc/slybrowser/releases) for updates.
 
 SlyBrowser is an independent project built from Chromium source. It is not Google
-Chrome, is not affiliated with Google, and does not ship Google Chrome branding.
+Chrome, is not affiliated with Google and does not ship Google Chrome branding.
 Chromium and Google Chrome are trademarks of their respective owners.
