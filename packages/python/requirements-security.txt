@@ -239,15 +239,16 @@ platformdirs==4.11.6 \
     --hash=sha256:1a4016e373f89f8ec458431fe0e0c5c4285858ac623f3e20efdfcbc0bd862941 \
     --hash=sha256:b22d992e863bc651c26b16242041c7979db6e3286e548f9a76cc91238fac599e
     # via slybrowser (packages/python/pyproject.toml)
-playwright==1.62.0 \
-    --hash=sha256:5108bd5b3e87169ddf269feee097da5893af7f8aea4634dfc840518d64c1f1da \
-    --hash=sha256:92c0d98ed04eb35af557b709875edba415b1f548bdb22ddb5bb3e1e6c835c2f1 \
-    --hash=sha256:ba33bae6a13b3d9d354c751cb618af357d20fe1d57767cbcce52079bbef17ad3 \
-    --hash=sha256:d8da938f3748841a8754f2e1f0216902c1c8f8ae3720de8b32ccf8e6913a7c4f \
-    --hash=sha256:db2d76613a57ad844362ce42f7d0c2fa26b19a4f7a46d4f76b891c631e6e5aff \
-    --hash=sha256:db755ab27db21a04186f1fe8169888e42356086e439b1059b923ef417f0b6034 \
-    --hash=sha256:e5614fa89355d7081457680324bb219f79f69c423c5cb6fa250e30b0d8aebf1c \
-    --hash=sha256:ea8d3055aa9d5a9f1832ac82517bd8b42c78fac7ebcbebb0107116735c8cb6a1
+playwright==1.65.1 \
+    --hash=sha256:0178cec62bfcc9c202f7d2c2c79c14ebac620c672f36ba31f0d7f0ee5ce87032 \
+    --hash=sha256:43541b89fa293819eb98383feea837368ee681e67cc105b19f3dd58f1409f1d6 \
+    --hash=sha256:4ffb9e62ee226130ec9333a062a3a30d6a12ee5e4d164a9076c2b54cd15cc14e \
+    --hash=sha256:5660e0b050a5bd5672bf8e366ed2580288a3d3640ff9444436ed2d890d3dc442 \
+    --hash=sha256:5f9542db4d3bff9943510297c1de4252bf8ee62c47fd5f5af3213645035ba6d7 \
+    --hash=sha256:a6c0db1447bcbe0493dcd23c84faf8e993fa7f8c1573b146a5c786df262f90b5 \
+    --hash=sha256:cd0eabebdadd45bd897a5465b358c26546cf0d7298492d66f609eec012a68de1 \
+    --hash=sha256:d50ad4dd217d4ee9e4672efd7ec4ab0523b5e73f64f6e0c5eae258961fa73a49 \
+    --hash=sha256:f9ea4f4b4f70ecc27ef0bd46a1b929798f1a8bf68b3e771261fc098bc98e1a0b
     # via slybrowser (packages/python/pyproject.toml)
 pycparser==3.0 \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
